@@ -4,6 +4,8 @@ Local-first, free, MIT-licensed text-to-speech desktop app for Windows. Paste te
 
 No cloud calls. No telemetry. No accounts.
 
+![TTS App main window](docs/screenshots/main-window.png)
+
 ## Why
 
 I read a lot of articles. Existing options either phone home, cost money, sound like 2003, or require a terminal. This is the one I want on my desktop.
