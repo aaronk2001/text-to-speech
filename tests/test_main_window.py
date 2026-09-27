@@ -194,3 +194,15 @@ def test_starts_on_the_preferred_engine(
         assert w._current_engine is not None and w._current_engine.name == "other"
     finally:
         playback.shutdown()
+
+
+def test_pitch_slider_only_enabled_for_engines_that_use_it(window: MainWindow) -> None:
+    assert not window._pitch_slider.isEnabled()  # _ToneEngine ignores pitch
+
+
+def test_skip_buttons_enabled_only_while_audio_is_out(window: MainWindow, qtbot: Any) -> None:
+    assert not window._forward_btn.isEnabled()
+    window._text_edit.setPlainText("Some words here.")
+    window._play_btn.click()
+    qtbot.waitUntil(lambda: _state(window) == PlaybackState.PLAYING)
+    assert window._forward_btn.isEnabled() and window._rewind_btn.isEnabled()

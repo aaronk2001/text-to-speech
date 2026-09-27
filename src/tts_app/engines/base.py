@@ -42,6 +42,8 @@ SYNTHESIS_LOCK = threading.Lock()
 
 class TTSEngine(ABC):
     name: ClassVar[str] = ""
+    # Whether synthesize() honours its pitch argument; the UI disables the slider if not.
+    supports_pitch: ClassVar[bool] = False
 
     @abstractmethod
     def is_available(self) -> bool:

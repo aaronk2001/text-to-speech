@@ -177,3 +177,63 @@ def test_synthesis_error_is_reported(controller: PlaybackController, qtbot: Any)
         controller.play(synth)
     assert "engine exploded" in blocker.args[0]
     assert controller.state() == PlaybackState.IDLE
+
+
+def test_seek_back_replays_from_the_new_position(
+    controller: PlaybackController, qtbot: Any
+) -> None:
+    audio = _pcm(2.0)
+    controller.play(lambda: iter([audio]))
+    qtbot.waitUntil(lambda: controller._synthesis_done)
+    FakeSink.instances[-1].processed_us = 1_500_000
+
+    controller.seek(500)
+
+    sink = FakeSink.instances[-1]
+    assert len(FakeSink.instances) == 2  # a fresh sink starting at the target
+    offset = BYTES_PER_SECOND // 2
+    assert bytes(sink.written) == audio[offset:]
+    assert controller.position_ms == 500
+    assert controller.state() == PlaybackState.PLAYING
+
+
+def test_seek_while_paused_stays_paused(controller: PlaybackController, qtbot: Any) -> None:
+    controller.play(lambda: iter([_pcm(2.0)]))
+    qtbot.waitUntil(lambda: controller.state() == PlaybackState.PLAYING)
+    controller.pause()
+
+    controller.seek(1000)
+
+    assert controller.state() == PlaybackState.PAUSED
+    assert FakeSink.instances[-1].state().name == "SuspendedState"
+    controller.resume()
+    assert controller.state() == PlaybackState.PLAYING
+
+
+def test_skip_past_the_end_finishes(controller: PlaybackController, qtbot: Any) -> None:
+    controller.play(lambda: iter([_pcm(1.0)]))
+    qtbot.waitUntil(lambda: controller._synthesis_done)
+
+    with qtbot.waitSignal(controller.finished, timeout=1000):
+        controller.skip(10_000)
+    assert controller.state() == PlaybackState.IDLE
+
+
+def test_seek_is_ignored_when_nothing_is_playing(controller: PlaybackController) -> None:
+    controller.seek(1000)
+    controller.skip(1000)
+    assert FakeSink.instances == []
+
+
+def test_highlight_follows_a_seek_backwards(controller: PlaybackController, qtbot: Any) -> None:
+    text = "First one. Second one."
+    highlights: list[str] = []
+    controller.segment_changed.connect(lambda s, e: highlights.append(text[s:e]))
+    controller.play_segments(segment_text(text), lambda seg: iter([_pcm(1.0)]))
+    qtbot.waitUntil(lambda: controller._synthesis_done)
+    FakeSink.instances[-1].processed_us = 1_500_000
+    qtbot.waitUntil(lambda: len(highlights) == 2)
+
+    controller.seek(200)
+
+    assert highlights[-1] == "First one."

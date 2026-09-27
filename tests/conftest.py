@@ -28,7 +28,8 @@ class _FakeIO:
 
     def write(self, data: bytes) -> int:
         self._sink.written.extend(data)
-        self._sink.set_state(QAudio.State.ActiveState)
+        if self._sink.state() != QAudio.State.SuspendedState:  # a paused device stays paused
+            self._sink.set_state(QAudio.State.ActiveState)
         return len(data)
 
 

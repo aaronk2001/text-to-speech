@@ -36,6 +36,7 @@ def get_rvc_stage_dir() -> Path:
 
 class RvcEngine(TTSEngine):
     name: ClassVar[str] = "rvc"
+    supports_pitch: ClassVar[bool] = True  # mapped to RVC's semitone shift
 
     def __init__(self, base_engine: TTSEngine | None = None) -> None:
         self._base_engine = base_engine

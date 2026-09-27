@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import contextlib
 import functools
 import logging
@@ -108,12 +109,15 @@ class PlaybackController(QObject):
         # destroying a running QThread aborts the process.
         self._retired: list[_SynthWorker] = []
         self._generation = 0
-        self._total_bytes = 0
+        # Everything synthesized so far in this run, kept so playback can seek.
+        # The sink was opened at _base_bytes and has been fed up to _write_pos.
+        self._audio = bytearray()
+        self._base_bytes = 0
+        self._write_pos = 0
         self._synthesis_done = False
         self._first_chunk_seen = False
         # True once the sink has played everything written to it so far.
         self._sink_drained = False
-        self._pending = bytearray()
         # (stream byte offset, start_char, end_char) for each synthesized segment
         self._segment_marks: list[tuple[int, int, int]] = []
         self._current_mark = -1
@@ -140,20 +144,40 @@ class PlaybackController(QObject):
 
     @property
     def duration_ms(self) -> int:
-        return int(self._total_bytes / BYTES_PER_SECOND * 1000)
+        return _bytes_to_ms(len(self._audio))
 
     @property
     def position_ms(self) -> int:
         if self._sink is None:
             return 0
-        return int(self._sink.processedUSecs() / 1000)
+        return _bytes_to_ms(self._base_bytes) + int(self._sink.processedUSecs() / 1000)
+
+    def can_seek(self) -> bool:
+        return self._sink is not None and self._state in (
+            PlaybackState.PLAYING,
+            PlaybackState.PAUSED,
+        )
 
     def seek(self, position_ms: int) -> None:
-        # Push-mode streaming sink does not support arbitrary seek.
-        return
+        """Jump within the audio synthesized so far (clamped to what exists)."""
+        if not self.can_seek():
+            return
+        target = int(position_ms) * BYTES_PER_SECOND // 1000
+        target = max(0, min(target, len(self._audio)))
+        target -= target % (CHANNELS * SAMPLE_WIDTH)
+        # A push-mode sink can't rewind, so replace it with one starting at target.
+        self._open_sink(target, suspended=self._state == PlaybackState.PAUSED)
+        self._current_mark = -1
+        self._emit_position()
+        if target >= len(self._audio) and self._synthesis_done:
+            self._sink_drained = True  # sought to the very end: nothing left to play
+            self._maybe_finish()
+            return
+        self._pump()
 
     def skip(self, delta_ms: int) -> None:
-        return
+        if self.can_seek():
+            self.seek(self.position_ms + delta_ms)
 
     def play(self, synthesize_callable: Callable[[], Iterator[bytes]]) -> None:
         self._start(synthesize_callable=synthesize_callable)
@@ -205,8 +229,9 @@ class PlaybackController(QObject):
                 self._sink.stop()
             self._sink = None
         self._sink_io = None
-        self._pending.clear()
-        self._total_bytes = 0
+        self._audio = bytearray()
+        self._base_bytes = 0
+        self._write_pos = 0
         self._synthesis_done = False
         self._first_chunk_seen = False
         self._segment_marks.clear()
@@ -248,10 +273,9 @@ class PlaybackController(QObject):
     def _sync_segment(self, position_ms: int) -> None:
         """Emit segment_changed once playback reaches the next segment's audio."""
         played = position_ms * BYTES_PER_SECOND // 1000
-        mark = self._current_mark
-        while mark + 1 < len(self._segment_marks) and self._segment_marks[mark + 1][0] <= played:
-            mark += 1
-        if mark != self._current_mark:
+        offsets = [offset for offset, _, _ in self._segment_marks]
+        mark = bisect.bisect_right(offsets, played) - 1
+        if mark >= 0 and mark != self._current_mark:
             self._current_mark = mark
             _, start, end = self._segment_marks[mark]
             self.segment_changed.emit(start, end)
@@ -262,33 +286,41 @@ class PlaybackController(QObject):
             return
         # Chunks arrive in order, so this segment's audio begins at the current end
         # of the stream. Highlighting waits until playback actually gets there.
-        self._segment_marks.append((self._total_bytes, start, end))
+        self._segment_marks.append((len(self._audio), start, end))
 
     @Slot(int, bytes)
     def _on_chunk(self, generation: int, c: bytes) -> None:
         if generation != self._generation:
             return
         self.audio_chunk.emit(c)
-        self._total_bytes += len(c)
+        self._audio.extend(c)
 
         if not self._first_chunk_seen:
             self._first_chunk_seen = True
-            self._start_push_sink()
+            self._open_sink(0)
+            self._emit_position()
             self._set_state(PlaybackState.PLAYING)
 
-        self._pending.extend(c)
         self._pump()
 
-    def _start_push_sink(self) -> None:
+    def _open_sink(self, offset: int, suspended: bool = False) -> None:
+        """(Re)create the push sink, starting playback at byte `offset` of the stream."""
+        if self._sink is not None:
+            with contextlib.suppress(Exception):
+                self._sink.stop()
         self._sink = QAudioSink(self._output_device, self._format)
         # 1s buffer: enough to hide synth bursts, small enough to keep latency low
         self._sink.setBufferSize(BYTES_PER_SECOND)
         self._sink.stateChanged.connect(self._on_sink_state_changed)
+        self._base_bytes = offset
+        self._write_pos = offset
         self._sink_drained = False
         self._sink_io = self._sink.start()
+        if suspended:
+            self._sink.suspend()
+        else:
+            self._position_timer.start()
         self._pump_timer.start()
-        self._position_timer.start()
-        self._emit_position()
 
     @Slot()
     def _pump(self) -> None:
@@ -299,20 +331,22 @@ class PlaybackController(QObject):
         """
         if self._sink is None or self._sink_io is None:
             return
-        if self._pending:
+        pending = len(self._audio) - self._write_pos
+        if pending > 0:
             free = self._sink.bytesFree()
             if free > 0:
-                n = min(free, len(self._pending))
+                n = min(free, pending)
+                start = self._write_pos
                 try:
-                    written = self._sink_io.write(bytes(self._pending[:n]))
+                    written = self._sink_io.write(bytes(self._audio[start:start + n]))
                 except Exception as e:
                     logger.warning("sink write failed: %s", e)
                     return
                 if written > 0:
-                    del self._pending[:written]
+                    self._write_pos += written
                     self._sink_drained = False
 
-        if self._synthesis_done and not self._pending:
+        if self._synthesis_done and self._write_pos >= len(self._audio):
             # Last bytes have been handed to the sink; wait for IdleState to fire finished.
             # Stop polling — _on_sink_state_changed handles the rest.
             self._pump_timer.stop()
@@ -350,7 +384,8 @@ class PlaybackController(QObject):
         if self._state not in (PlaybackState.PLAYING, PlaybackState.PAUSED):
             return
         # Idle with audio still pending is an underrun, not the end.
-        if not (self._synthesis_done and self._sink_drained and not self._pending):
+        pending = len(self._audio) - self._write_pos
+        if not (self._synthesis_done and self._sink_drained and pending <= 0):
             return
         self._position_timer.stop()
         self._pump_timer.stop()
@@ -363,3 +398,7 @@ class PlaybackController(QObject):
         self.position_changed.emit(total, total)
         self._set_state(PlaybackState.IDLE)
         self.finished.emit()
+
+
+def _bytes_to_ms(n: int) -> int:
+    return int(n / BYTES_PER_SECOND * 1000)

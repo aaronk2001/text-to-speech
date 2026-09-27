@@ -383,7 +383,9 @@ class MainWindow(QMainWindow):
         self._save_btn.clicked.connect(self._on_save)
         self._rewind_btn.clicked.connect(self._on_rewind)
         self._forward_btn.clicked.connect(self._on_forward)
-        self._progress_slider.sliderMoved.connect(self._on_seek)
+        self._rewind_btn.setEnabled(False)  # enabled while there's audio to seek in
+        self._forward_btn.setEnabled(False)
+        self._progress_slider.sliderReleased.connect(self._on_seek_released)
 
         return _glass_card(layout)
 
@@ -510,6 +512,12 @@ class MainWindow(QMainWindow):
     def _repopulate_voices(self) -> None:
         if not self._current_engine:
             return
+
+        supports_pitch = self._current_engine.supports_pitch
+        self._pitch_slider.setEnabled(supports_pitch)
+        self._pitch_slider.setToolTip(
+            "" if supports_pitch else f"{self._current_engine.name.upper()} can't change pitch"
+        )
 
         voices = self._registry.voices(self._current_engine)
         languages: dict[str, list[Voice]] = {}
@@ -664,9 +672,10 @@ class MainWindow(QMainWindow):
     def _on_forward(self) -> None:
         self._playback.skip(10000)
 
-    @Slot(int)
-    def _on_seek(self, value: int) -> None:
-        self._playback.seek(value)
+    @Slot()
+    def _on_seek_released(self) -> None:
+        # Seek once on release: each seek reopens the audio device.
+        self._playback.seek(self._progress_slider.value())
 
     @Slot(int, int)
     def _on_position_changed(self, current_ms: int, total_ms: int) -> None:
@@ -767,8 +776,9 @@ class MainWindow(QMainWindow):
             self._play_btn.setEnabled(True)
             self._pause_btn.setEnabled(False)
             self._stop_btn.setEnabled(False)
-        self._rewind_btn.setEnabled(False)
-        self._forward_btn.setEnabled(False)
+        seekable = ps in (PlaybackState.PLAYING, PlaybackState.PAUSED)
+        self._rewind_btn.setEnabled(seekable)
+        self._forward_btn.setEnabled(seekable)
         self._progress_slider.setEnabled(active)
         self._update_status_dot(ps)
         self._update_status()
