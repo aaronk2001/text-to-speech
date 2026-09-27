@@ -16,3 +16,8 @@ assets/bin/
 .env
 .omc/
 .claude/
+
+# Scratch output from manual runs at the repo root
+/*.wav
+/tmp_*.png
+/launch_out.txt

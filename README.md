@@ -2,7 +2,7 @@
 
 Local-first, free, MIT-licensed text-to-speech desktop app for Windows. Paste text, pick a voice, hit play. Or press `Ctrl+Alt+S` from anywhere and it reads your clipboard.
 
-No cloud calls. No telemetry. No accounts.
+Speech is synthesized on your machine; the only network traffic is downloading voice models. No telemetry. No accounts.
 
 ![TTS App main window](docs/screenshots/main-window.png)
 
@@ -12,13 +12,13 @@ I read a lot of articles. Existing options either phone home, cost money, sound 
 
 ## Engines
 
-| Engine        | Quality | Notes                                               |
-|---------------|---------|-----------------------------------------------------|
-| **Piper**     | High    | Neural ONNX, CPU-only, ~60 MB per voice. Primary.   |
-| **SAPI5**     | Medium  | Windows built-in, zero-config fallback (`pyttsx3`). |
-| **eSpeak-NG** | Robotic | Tiny, last-resort, supports 100+ languages.         |
+| Engine         | Quality | Notes                                                                                      |
+|----------------|---------|--------------------------------------------------------------------------------------------|
+| **Supertonic** | High    | Neural ONNX, CPU, 10 English voices. Optional (`pip install supertonic`); fetches its model on first use. Preferred when installed. |
+| **Piper**      | High    | Neural ONNX, CPU-only, ~60 MB per voice. Runs in-process via `piper-tts`, else `piper.exe`. |
+| **SAPI5**      | Medium  | Windows built-in, zero-config fallback (`pyttsx3`).                                        |
 
-Piper and eSpeak-NG run as separate subprocesses to keep this codebase MIT.
+An experimental RVC voice-conversion engine (`engines/rvc_engine.py`) is in the tree but not enabled yet.
 
 ## Install
 
@@ -26,8 +26,9 @@ Requirements:
 
 - Windows 10/11
 - Python 3.11+ on PATH (`winget install Python.Python.3.11`)
+- Optional: `pip install supertonic` inside the venv for the Supertonic voices
 - Optional: `ffmpeg` on PATH if you want MP3/OGG export
-- Optional: `piper.exe` and `espeak-ng.exe` on PATH or in `assets/bin/` (Piper download from <https://github.com/OHF-Voice/piper1-gpl/releases>)
+- Optional: `piper.exe` on PATH or in `assets/bin/`, used only if the `piper-tts` package can't load (download from <https://github.com/OHF-Voice/piper1-gpl/releases>)
 
 One-shot install:
 
@@ -37,7 +38,7 @@ cd C:\path\to\Text-to-speach
 .\install.ps1
 ```
 
-That creates a venv, installs deps, drops a `TTS App.lnk` on your Desktop and Start Menu, and launches the first-run wizard.
+That creates a venv, installs deps, drops a `TTS App.lnk` on your Desktop and Start Menu, and launches the app.
 
 ## Run
 
@@ -53,15 +54,19 @@ Or directly:
 .\.venv\Scripts\pythonw.exe launcher.py
 ```
 
-## Hotkey
+## Hotkey and tray
 
-Default global hotkey is `Ctrl+Alt+S`. Pressing it from any window reads your clipboard in the last-used voice. Disable or rebind in Settings.
+Default global hotkey is `Ctrl+Alt+S`. Pressing it from any window reads your clipboard in the current voice; pressing it again on the same text stops. The clipboard text replaces what's in the editor.
+
+While the hotkey is active the app lives in the system tray: closing the window hides it, and the tray menu has Show, Read clipboard, Pause/Resume and Quit. Quit from the tray or the ☰ menu.
+
+To rebind or disable, edit `hotkey` (e.g. `"ctrl+shift+r"`) or `hotkey_enabled` in the config file (see below) and restart. There's no settings UI yet.
 
 ## Adding voices
 
-In-app: open the Voice Browser → "Download Piper voices" tab → pick → Download.
+In-app: click **+ Add voice** → "Download Piper" → pick → Download.
 
-By hand: drop `<voice_id>.onnx` and `<voice_id>.onnx.json` into `%APPDATA%\TTSApp\voices\` and restart.
+By hand: drop `<voice_id>.onnx` and `<voice_id>.onnx.json` into `%LOCALAPPDATA%\TTSApp\voices\` and restart.
 
 ## Development
 
@@ -77,25 +82,29 @@ Project layout:
 
 ```
 src/tts_app/
-  engines/    # TTSEngine ABC + Piper, SAPI, eSpeak adapters
-  audio/      # QAudioSink playback + WAV/MP3/OGG encode
-  ui/         # main window, voice browser, first-run wizard, tray
-  config/     # %APPDATA%\TTSApp\config.json (pydantic)
+  engines/    # TTSEngine ABC + Supertonic, Piper, SAPI adapters (RVC experimental)
+  audio/      # QAudioSink playback, WAV/MP3/OGG export
+  text/       # sentence segmentation (playback, highlighting, export)
+  ui/         # main window, voice browser, tray, first-run wizard (not wired up yet)
+  config/     # config.json schema + store (pydantic)
   hotkey/     # global Ctrl+Alt+S
 launcher.py   # pythonw entry point
 tts_app.bat   # Windows launch shim
 install.ps1   # creates venv + Desktop/Start Menu shortcuts
 ```
 
+Tests run headless: `QT_QPA_PLATFORM=offscreen pytest` works without a sound card (playback tests use a fake audio sink).
+
 Add a new engine: subclass `TTSEngine` in `src/tts_app/engines/`, register it in `engines/registry.py:build_default_engines()`. Tests in `tests/test_<engine>_engine.py`.
 
 ## Files written at runtime
 
-- `%APPDATA%\TTSApp\config.json` — settings
-- `%APPDATA%\TTSApp\voices\` — downloaded Piper voice models
-- `%LOCALAPPDATA%\TTSApp\Logs\app.log` (rotated) — runtime log
+- `%LOCALAPPDATA%\TTSApp\config.json` — settings
+- `%LOCALAPPDATA%\TTSApp\voices\` — downloaded Piper voice models
+- `%LOCALAPPDATA%\TTSApp\supertonic\` — Supertonic model (if installed)
+- `%LOCALAPPDATA%\TTSApp\Logs\tts_app.log` (rotated) — runtime log; `launcher.log` there catches startup crashes
 
-Delete the config file to reset to defaults; the first-run wizard re-runs.
+Delete the config file to reset to defaults.
 
 ## License
 
