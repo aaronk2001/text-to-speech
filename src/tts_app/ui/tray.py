@@ -47,10 +47,9 @@ class TrayIcon(QSystemTrayIcon):
         self._toggle_action = menu.addAction("Show window")
         self._toggle_action.triggered.connect(self._on_toggle)
 
-        read_label = "Read clipboard now"
-        if hotkey:
-            read_label += f" ({format_hotkey(hotkey)})"
-        menu.addAction(read_label).triggered.connect(on_read_clipboard)
+        self._read_action = menu.addAction("")
+        self._read_action.triggered.connect(on_read_clipboard)
+        self.set_hotkey(hotkey)
 
         self._pause_action = menu.addAction("Pause")
         self._pause_action.triggered.connect(on_pause_resume)
@@ -60,6 +59,12 @@ class TrayIcon(QSystemTrayIcon):
 
         self.setContextMenu(menu)
         self.activated.connect(self._on_activated)
+
+    def set_hotkey(self, hotkey: str | None) -> None:
+        label = "Read clipboard now"
+        if hotkey:
+            label += f" ({format_hotkey(hotkey)})"
+        self._read_action.setText(label)
 
     def _on_toggle(self) -> None:
         self._on_show()

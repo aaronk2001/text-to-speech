@@ -60,7 +60,7 @@ Default global hotkey is `Ctrl+Alt+S`. Pressing it from any window reads your cl
 
 While the hotkey is active the app lives in the system tray: closing the window hides it, and the tray menu has Show, Read clipboard, Pause/Resume and Quit. Quit from the tray or the ☰ menu.
 
-To rebind or disable, edit `hotkey` (e.g. `"ctrl+shift+r"`) or `hotkey_enabled` in the config file (see below) and restart. There's no settings UI yet.
+To rebind or turn it off: ☰ → Preferences. Changes apply immediately.
 
 ## Adding voices
 

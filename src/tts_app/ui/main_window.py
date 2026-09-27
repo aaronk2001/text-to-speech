@@ -37,6 +37,7 @@ from tts_app.text.segment import Segment, segment_text
 from tts_app.ui.effects import HoverGlow, OpacityPulse
 from tts_app.ui.motion import policy as motion_policy
 from tts_app.ui.motion import should_animate
+from tts_app.ui.preferences import PreferencesDialog
 from tts_app.ui.transport_progress import TransportProgressSlider
 from tts_app.ui.voice_browser import VoiceBrowser
 from tts_app.ui.voice_picker import VoicePicker
@@ -63,6 +64,7 @@ def _glass_card(content: QVBoxLayout) -> QFrame:
 
 class MainWindow(QMainWindow):
     hidden_to_tray = Signal()
+    preferences_changed = Signal()
 
     # Emitted from the save worker thread; delivered on the UI thread.
     _save_finished = Signal(str)
@@ -771,7 +773,10 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_preferences(self) -> None:
-        QMessageBox.information(self, "Preferences", "Coming soon!")
+        dialog = PreferencesDialog(self._settings, self)
+        if dialog.exec() == 1:
+            save_settings(self._settings)
+            self.preferences_changed.emit()
 
     @Slot()
     def _on_about(self) -> None:
