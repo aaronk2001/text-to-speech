@@ -11,8 +11,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, ClassVar
 
-from tts_app.engines._wav import stream_wav_as_pcm
-from tts_app.engines.base import SynthesisError, TTSEngine, Voice
+from tts_app.engines._wav import float_to_pcm16, resample_mono, stream_wav_as_pcm
+from tts_app.engines.base import PCM_SAMPLE_RATE, SynthesisError, TTSEngine, Voice
 from tts_app.engines.voices import get_voices_dir, installed_voice_files
 
 logger = logging.getLogger(__name__)
@@ -167,7 +167,15 @@ class PiperEngine(TTSEngine):
 
         try:
             for chunk in voice_obj.synthesize(text, syn_config=cfg):
-                data = chunk.audio_int16_bytes
+                if chunk.sample_rate == PCM_SAMPLE_RATE:
+                    data = chunk.audio_int16_bytes
+                else:
+                    # low/x_low voices are 16 kHz; playback assumes PCM_SAMPLE_RATE.
+                    data = float_to_pcm16(
+                        resample_mono(
+                            chunk.audio_float_array, chunk.sample_rate, PCM_SAMPLE_RATE
+                        )
+                    )
                 if data:
                     yield data
         except Exception as e:

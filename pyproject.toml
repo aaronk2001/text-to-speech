@@ -19,6 +19,8 @@ dependencies = [
     "platformdirs>=4",    # %APPDATA% path resolution
     "pydantic>=2",        # config schema validation
     "pydub>=0.25",        # WAV/MP3/OGG encoding (calls bundled ffmpeg.exe)
+    "audioop-lts>=0.2; python_version >= '3.13'",  # pydub still imports audioop (gone in 3.13)
+    "numpy>=1.24",        # PCM decoding/resampling for engine output
     "requests>=2.31",     # Piper voice catalog + voice file downloader
 ]
 

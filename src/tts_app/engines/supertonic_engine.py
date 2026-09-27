@@ -9,6 +9,7 @@ from typing import ClassVar
 import numpy as np
 import platformdirs
 
+from tts_app.engines._wav import float_to_pcm16, resample_mono
 from tts_app.engines.base import PCM_SAMPLE_RATE, TTSEngine, Voice
 
 logger = logging.getLogger(__name__)
@@ -110,24 +111,14 @@ class SupertonicEngine(TTSEngine):
 
         audio = np.asarray(wav, dtype=np.float32).reshape(-1)
         src_sr = int(getattr(tts, "sample_rate", 44100))
-        audio = _resample_mono(audio, src_sr, PCM_SAMPLE_RATE)
+        audio = resample_mono(audio, src_sr, PCM_SAMPLE_RATE)
 
         peak = float(np.abs(audio).max()) if audio.size else 0.0
         if peak > 0:
             audio = audio / peak * 0.95 * max(0.0, min(volume, 1.0))
-        pcm = (audio * 32767.0).clip(-32768, 32767).astype("<i2").tobytes()
+        pcm = float_to_pcm16(audio)
 
         chunk = PCM_SAMPLE_RATE * 2
         for i in range(0, len(pcm), chunk):
             yield pcm[i:i + chunk]
 
-
-def _resample_mono(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
-    if src_sr == dst_sr or audio.size == 0:
-        return audio
-    n_out = int(round(audio.size * dst_sr / src_sr))
-    if n_out <= 0:
-        return np.zeros(0, dtype=np.float32)
-    x_old = np.linspace(0.0, 1.0, num=audio.size, endpoint=False)
-    x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
-    return np.interp(x_new, x_old, audio).astype(np.float32)
