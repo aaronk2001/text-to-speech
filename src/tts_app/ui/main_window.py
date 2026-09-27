@@ -484,13 +484,11 @@ class MainWindow(QMainWindow):
         HoverGlow(self._play_btn, color="#3b82f6", max_radius=28)
 
     def _load_settings(self) -> None:
-        engines = self._registry.available()
-        if engines:
-            self._current_engine = engines[0]
-            if self._settings.last_voice_id:
-                result = self._registry.find_voice(self._settings.last_voice_id)
-                if result:
-                    self._current_engine, self._current_voice = result
+        self._current_engine = self._registry.pick_default(self._settings.engine_preference)
+        if self._current_engine is not None and self._settings.last_voice_id:
+            result = self._registry.find_voice(self._settings.last_voice_id)
+            if result:
+                self._current_engine, self._current_voice = result
 
         self._refresh_engine_pills()
         self._repopulate_voices()
@@ -513,7 +511,7 @@ class MainWindow(QMainWindow):
         if not self._current_engine:
             return
 
-        voices = self._current_engine.list_voices()
+        voices = self._registry.voices(self._current_engine)
         languages: dict[str, list[Voice]] = {}
         for voice in voices:
             lang = voice.language or "Unknown"
@@ -688,7 +686,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_browse_voices(self) -> None:
         browser = VoiceBrowser(self._registry)
-        if browser.exec() == 1:
+        accepted = browser.exec() == 1
+        # The browser can download voices, which changes what's available.
+        self._registry.refresh()
+        if self._current_engine not in self._registry.available():
+            self._current_engine = self._registry.pick_default(self._settings.engine_preference)
+            self._current_voice = None
+        self._refresh_engine_pills()
+        self._repopulate_voices()
+        self._update_status()
+        if accepted:
             voice = browser.selectedVoice()
             if voice:
                 result = self._registry.find_voice(voice.id)
@@ -834,7 +841,7 @@ class MainWindow(QMainWindow):
             return
 
         voice_count = sum(
-            len(e.list_voices()) for e in self._registry.available()
+            len(self._registry.voices(e)) for e in self._registry.available()
         )
         ps = self._playback._state
         if ps == PlaybackState.SYNTHESIZING:
@@ -853,6 +860,12 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_engines_probed(self) -> None:
         self._engines_probed = True
+        self._registry.refresh()
+        available = self._registry.available()
+        if self._current_engine not in available:
+            self._current_engine = self._registry.pick_default(self._settings.engine_preference)
+            self._current_voice = None
+            self._repopulate_voices()
         self._refresh_engine_pills()
 
         if self._settings.last_voice_id and not self._current_voice:

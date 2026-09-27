@@ -153,7 +153,7 @@ class VoiceBrowser(QDialog):
         self._installed_list.clear()
         engine_for: dict[str, str] = {}
         for engine in self._registry.available():
-            for v in engine.list_voices():
+            for v in self._registry.voices(engine):
                 engine_for[v.id] = engine.name.upper()
         for voice in self._registry.all_voices():
             engine_name = engine_for.get(voice.id, "?")
@@ -254,6 +254,7 @@ class VoiceBrowser(QDialog):
     @Slot()
     def _on_download_finished(self) -> None:
         self._progress_bar.setVisible(False)
+        self._registry.refresh()  # a new voice can make Piper available
         self._populate_download()
         self._populate_installed()
 

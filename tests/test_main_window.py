@@ -174,3 +174,23 @@ def test_close_quits_normally_without_tray(window: MainWindow, qtbot: Any) -> No
 
     assert window.close()
     assert hidden == []
+
+
+def test_starts_on_the_preferred_engine(
+    qtbot: Any, fake_audio: type[FakeSink], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Other(_ToneEngine):
+        name = "other"
+
+        def list_voices(self) -> list[Voice]:
+            return [Voice(id="other:1", engine="other", name="Other", language="en")]
+
+    monkeypatch.setattr(main_window, "save_settings", lambda _settings: None)
+    playback = PlaybackController()
+    settings = AppSettings(engine_preference=["other", "tone"])
+    w = MainWindow(EngineRegistry([_ToneEngine(), _Other()]), playback, settings)
+    qtbot.addWidget(w)
+    try:
+        assert w._current_engine is not None and w._current_engine.name == "other"
+    finally:
+        playback.shutdown()
