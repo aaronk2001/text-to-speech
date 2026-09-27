@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from tts_app.config import AppSettings, load_settings, save_settings, settings_path
 
@@ -74,13 +74,13 @@ def test_unknown_key_ignored_on_load(mock_config_dir):
 
 
 def test_field_bounds_enforced():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AppSettings(rate=10.0)
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AppSettings(pitch=0.1)
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AppSettings(volume=1.5)
 
 

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import requests
-from PySide6.QtCore import QThread, Qt, Signal, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -108,7 +108,8 @@ class _DownloadModelWorker(QThread):
                         if chunk:
                             f.write(chunk)
                             downloaded += len(chunk)
-                            overall = int(((i + downloaded / max(total_bytes, 1)) / total_files) * 100)
+                            fraction = downloaded / max(total_bytes, 1)
+                            overall = int((i + fraction) / total_files * 100)
                             self.progress.emit(overall, 100)
 
             self.finished_download.emit(str(dest_dir))

@@ -5,11 +5,10 @@ from pathlib import Path
 from threading import Thread
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Slot
-from PySide6.QtGui import QAction, QColor, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QAction, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
-    QComboBox,
     QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,

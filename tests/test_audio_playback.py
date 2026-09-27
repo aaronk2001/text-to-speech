@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterator
 
 import pytest
@@ -46,10 +47,8 @@ def test_playback_controller_play_and_finish(qtbot) -> None:
     controller.play(tiny_synthesizer)
 
     # Wait for the signal with a reasonable timeout
-    try:
+    with contextlib.suppress(Exception):  # signal may already have been emitted
         finished_signal.wait()
-    except Exception:
-        pass  # Signal may have already been emitted
 
 
 def test_playback_controller_stop_transitions_to_idle(qtbot) -> None:

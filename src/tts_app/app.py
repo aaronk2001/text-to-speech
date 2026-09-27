@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from typing import ClassVar
 
 from PySide6.QtCore import QThread, QTimer, Signal

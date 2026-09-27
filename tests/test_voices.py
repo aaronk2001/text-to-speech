@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
+import requests
 
-from tts_app.engines.voices import BUILT_IN_CATALOG, PiperVoiceMeta, download_voice, installed_voice_files
+from tts_app.engines.voices import (
+    BUILT_IN_CATALOG,
+    PiperVoiceMeta,
+    download_voice,
+    installed_voice_files,
+)
 
 
 def test_built_in_catalog_not_empty():
@@ -113,9 +118,9 @@ def test_download_voice_http_error(tmp_path, monkeypatch):
     )
 
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.side_effect = Exception("HTTP 404")
+    mock_resp.raise_for_status.side_effect = requests.HTTPError("HTTP 404")
 
     monkeypatch.setattr("tts_app.engines.voices.requests.get", lambda *a, **k: mock_resp)
 
-    with pytest.raises(Exception):
+    with pytest.raises(requests.HTTPError):
         download_voice(meta, tmp_path)

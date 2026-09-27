@@ -4,8 +4,6 @@ import logging
 import shutil
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from PySide6.QtCore import QRectF, QSize, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import (
     QColor,
@@ -23,7 +21,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListView,
     QProgressBar,
     QPushButton,
@@ -35,6 +32,8 @@ from PySide6.QtWidgets import (
 
 from tts_app.engines.rvc_engine import get_rvc_models_dir
 from tts_app.ui.rvc_browser import _DownloadModelWorker, _SearchWorker
+
+logger = logging.getLogger(__name__)
 
 ROLE_MODEL_ID = Qt.ItemDataRole.UserRole + 1
 ROLE_AUTHOR = Qt.ItemDataRole.UserRole + 2
@@ -87,14 +86,17 @@ class _CardDelegate(QStyledItemDelegate):
         elided = fm.elidedText(title, Qt.TextElideMode.ElideRight, int(title_rect.width() * 2))
         painter.drawText(
             title_rect,
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop) | int(Qt.TextFlag.TextWordWrap),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            | int(Qt.TextFlag.TextWordWrap),
             elided,
         )
 
         painter.setFont(QFont("Space Grotesk", 9))
         painter.setPen(QColor("#94a3b8"))
         author_rect = QRectF(rect.left() + 14, rect.bottom() - 42, rect.width() - 28, 16)
-        painter.drawText(author_rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop), author)
+        painter.drawText(
+            author_rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop), author
+        )
 
         painter.setFont(QFont("JetBrains Mono", 8))
         painter.setPen(QColor("#cbd5e1"))

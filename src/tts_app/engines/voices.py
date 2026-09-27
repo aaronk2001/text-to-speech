@@ -29,9 +29,14 @@ class PiperVoiceMeta:
     size_mb: float
 
 
-def _hf_url(lang_family: str, lang_code: str, voice_name: str, quality: str, voice_id: str, ext: str) -> str:
+def _hf_url(
+    lang_family: str, lang_code: str, voice_name: str, quality: str, voice_id: str, ext: str
+) -> str:
     """Build HuggingFace resolve URL."""
-    return f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang_family}/{lang_code}/{voice_name}/{quality}/{voice_id}{ext}"
+    return (
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+        f"{lang_family}/{lang_code}/{voice_name}/{quality}/{voice_id}{ext}"
+    )
 
 
 BUILT_IN_CATALOG: tuple[PiperVoiceMeta, ...] = (
@@ -41,8 +46,12 @@ BUILT_IN_CATALOG: tuple[PiperVoiceMeta, ...] = (
         quality="medium",
         name="Lessac",
         gender="Male",
-        download_url_onnx=_hf_url("en", "en_US", "lessac", "medium", "en_US-lessac-medium", ".onnx"),
-        download_url_json=_hf_url("en", "en_US", "lessac", "medium", "en_US-lessac-medium", ".onnx.json"),
+        download_url_onnx=_hf_url(
+            "en", "en_US", "lessac", "medium", "en_US-lessac-medium", ".onnx"
+        ),
+        download_url_json=_hf_url(
+            "en", "en_US", "lessac", "medium", "en_US-lessac-medium", ".onnx.json"
+        ),
         size_mb_estimate=60,
         size_mb=63.5,
     ),
@@ -75,7 +84,9 @@ BUILT_IN_CATALOG: tuple[PiperVoiceMeta, ...] = (
         name="Alan",
         gender="Male",
         download_url_onnx=_hf_url("en", "en_GB", "alan", "medium", "en_GB-alan-medium", ".onnx"),
-        download_url_json=_hf_url("en", "en_GB", "alan", "medium", "en_GB-alan-medium", ".onnx.json"),
+        download_url_json=_hf_url(
+            "en", "en_GB", "alan", "medium", "en_GB-alan-medium", ".onnx.json"
+        ),
         size_mb_estimate=60,
         size_mb=63.0,
     ),
@@ -85,8 +96,12 @@ BUILT_IN_CATALOG: tuple[PiperVoiceMeta, ...] = (
         quality="medium",
         name="Jenny Dioco",
         gender="Female",
-        download_url_onnx=_hf_url("en", "en_GB", "jenny_dioco", "medium", "en_GB-jenny_dioco-medium", ".onnx"),
-        download_url_json=_hf_url("en", "en_GB", "jenny_dioco", "medium", "en_GB-jenny_dioco-medium", ".onnx.json"),
+        download_url_onnx=_hf_url(
+            "en", "en_GB", "jenny_dioco", "medium", "en_GB-jenny_dioco-medium", ".onnx"
+        ),
+        download_url_json=_hf_url(
+            "en", "en_GB", "jenny_dioco", "medium", "en_GB-jenny_dioco-medium", ".onnx.json"
+        ),
         size_mb_estimate=60,
         size_mb=63.4,
     ),
@@ -96,8 +111,12 @@ BUILT_IN_CATALOG: tuple[PiperVoiceMeta, ...] = (
         quality="medium",
         name="DaveFX",
         gender="Male",
-        download_url_onnx=_hf_url("es", "es_ES", "davefx", "medium", "es_ES-davefx-medium", ".onnx"),
-        download_url_json=_hf_url("es", "es_ES", "davefx", "medium", "es_ES-davefx-medium", ".onnx.json"),
+        download_url_onnx=_hf_url(
+            "es", "es_ES", "davefx", "medium", "es_ES-davefx-medium", ".onnx"
+        ),
+        download_url_json=_hf_url(
+            "es", "es_ES", "davefx", "medium", "es_ES-davefx-medium", ".onnx.json"
+        ),
         size_mb_estimate=60,
         size_mb=63.2,
     ),
@@ -123,7 +142,10 @@ def download_voice(
     size_bytes = meta.size_mb_estimate * 1024 * 1024
     _, free_bytes, _ = shutil.disk_usage(dest_dir)
     if free_bytes < size_bytes * 2:
-        raise RuntimeError(f"Not enough disk space: need {size_bytes * 2 / (1024**2):.0f} MB, have {free_bytes / (1024**2):.0f} MB")
+        raise RuntimeError(
+            f"Not enough disk space: need {size_bytes * 2 / (1024**2):.0f} MB, "
+            f"have {free_bytes / (1024**2):.0f} MB"
+        )
 
     onnx_path = dest_dir / f"{meta.voice_id}.onnx"
     tmp_path = onnx_path.with_suffix(".onnx.tmp")

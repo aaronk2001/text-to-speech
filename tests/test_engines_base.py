@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterator
 
 import pytest
@@ -26,7 +27,7 @@ def test_voice_display_without_gender() -> None:
 def test_voice_is_hashable_and_frozen() -> None:
     v = Voice(id="x", engine="e", name="n", language="en_US")
     assert hash(v)
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         v.name = "other"  # type: ignore[misc]
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -108,7 +107,8 @@ def test_piper_synthesize_success(tmp_path, monkeypatch):
 
         def mock_run(*args, **kwargs):
             import shutil
-            shutil.copy(wav_file, kwargs.get("stdout", "/dev/null") if "stdout" in kwargs else args[0][-2])
+            dest = kwargs.get("stdout", "/dev/null") if "stdout" in kwargs else args[0][-2]
+            shutil.copy(wav_file, dest)
 
             from unittest.mock import MagicMock
             result = MagicMock()
@@ -151,8 +151,6 @@ def test_piper_synthesize_success(tmp_path, monkeypatch):
 
 
 def test_piper_synthesize_rate_conversion():
-    engine = PiperEngine(piper_exe=Path("/nonexistent"))
-
     length_scale = 1.0 / max(2.0, 0.25)
     assert length_scale == 0.5
 

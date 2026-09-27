@@ -191,8 +191,8 @@ class RvcEngine(TTSEngine):
         rmvpe = assets / "rmvpe.pt"
         self._download_if_missing(f"{base}/hubert_base.pt", hubert, min_size=180_000_000)
         self._download_if_missing(f"{base}/rmvpe.pt", rmvpe, min_size=120_000_000)
-        os.environ["hubert_model_path"] = str(hubert)
-        os.environ["rmvpe_model_path"] = str(rmvpe)
+        os.environ["hubert_model_path"] = str(hubert)  # noqa: SIM112 (name set by rvc-inferpy)
+        os.environ["rmvpe_model_path"] = str(rmvpe)  # noqa: SIM112
         os.environ.setdefault("fcpe_model_path", str(assets / "fcpe.pt"))
         self._ensure_ffmpeg(assets)
 

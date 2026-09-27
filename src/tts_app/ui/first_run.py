@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import QSize, QThread, Signal, Slot
 from PySide6.QtWidgets import (
-    QApplication,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -159,7 +158,10 @@ class VoiceDownloadPage(QWizardPage):
         for meta in BUILT_IN_CATALOG:
             is_installed = meta.voice_id in installed
             prefix = "✓ Installed — " if is_installed else ""
-            display = f"{prefix}{meta.voice_id} — {meta.language} — {meta.quality} — ~{meta.size_mb_estimate}MB"
+            display = (
+                f"{prefix}{meta.voice_id} — {meta.language} — {meta.quality}"
+                f" — ~{meta.size_mb_estimate}MB"
+            )
 
             item = QListWidgetItem(display)
             item.setData(256, meta)
@@ -304,7 +306,6 @@ class FirstRunWizard(QWizard):
     def _create_play_test(self) -> Callable[[], None]:
         def play_test() -> None:
             from tts_app.audio.playback import PlaybackController
-            from tts_app.engines.base import Voice
 
             playback = PlaybackController()
 
