@@ -45,6 +45,7 @@ def test_download_voice_success(tmp_path, monkeypatch):
         download_url_onnx="https://example.com/test.onnx",
         download_url_json="https://example.com/test.onnx.json",
         size_mb_estimate=60,
+        size_mb=60.0,
     )
 
     mock_resp = MagicMock()
@@ -53,7 +54,7 @@ def test_download_voice_success(tmp_path, monkeypatch):
     mock_resp.raise_for_status.return_value = None
 
     mock_json_resp = MagicMock()
-    mock_json_resp.text = '{"test": "json"}'
+    mock_json_resp.content = b'{"test": "json"}'
     mock_json_resp.raise_for_status.return_value = None
 
     def mock_get(url, **kwargs):
@@ -86,6 +87,7 @@ def test_download_voice_disk_space_check(tmp_path, monkeypatch):
         download_url_onnx="https://example.com/test.onnx",
         download_url_json="https://example.com/test.onnx.json",
         size_mb_estimate=60,
+        size_mb=60.0,
     )
 
     monkeypatch.setattr(
@@ -107,6 +109,7 @@ def test_download_voice_http_error(tmp_path, monkeypatch):
         download_url_onnx="https://example.com/test.onnx",
         download_url_json="https://example.com/test.onnx.json",
         size_mb_estimate=60,
+        size_mb=60.0,
     )
 
     mock_resp = MagicMock()

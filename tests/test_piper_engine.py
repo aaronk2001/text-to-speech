@@ -142,6 +142,9 @@ def test_piper_synthesize_success(tmp_path, monkeypatch):
         )
 
         engine = PiperEngine(piper_exe=fake_exe)
+        # Exercise the piper.exe subprocess path even when piper-tts is installed.
+        engine._inproc = None
+        engine._module_ok = False
         chunks = list(engine.synthesize("hello", voice, rate=1.0))
 
         assert len(chunks) > 0
@@ -178,6 +181,9 @@ def test_piper_synthesize_invalid_voice(tmp_path, monkeypatch):
 
 def test_piper_install_hint_no_binary(tmp_path):
     engine = PiperEngine(piper_exe=Path("/nonexistent/piper.exe"))
+    # No runtime at all: neither the piper-tts module nor a binary.
+    engine._inproc = None
+    engine._module_ok = False
     hint = engine.install_hint()
 
     assert hint is not None
