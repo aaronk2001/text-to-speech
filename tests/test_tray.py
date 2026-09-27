@@ -34,7 +34,7 @@ def test_tray_icon_constructs(qapp):
 
     tray = TrayIcon(
         parent=None,
-        icon_path=icon_path,
+        icon=icon_path,
         on_show=callbacks["show"],
         on_hide=callbacks["hide"],
         on_read_clipboard=callbacks["read_clipboard"],
@@ -55,7 +55,7 @@ def test_tray_update_playback_state_playing(qapp):
 
     tray = TrayIcon(
         parent=None,
-        icon_path=icon_path,
+        icon=icon_path,
         on_show=MagicMock(),
         on_hide=MagicMock(),
         on_read_clipboard=MagicMock(),
@@ -78,7 +78,7 @@ def test_tray_update_playback_state_paused(qapp):
 
     tray = TrayIcon(
         parent=None,
-        icon_path=icon_path,
+        icon=icon_path,
         on_show=MagicMock(),
         on_hide=MagicMock(),
         on_read_clipboard=MagicMock(),
@@ -101,7 +101,7 @@ def test_tray_update_playback_state_idle(qapp):
 
     tray = TrayIcon(
         parent=None,
-        icon_path=icon_path,
+        icon=icon_path,
         on_show=MagicMock(),
         on_hide=MagicMock(),
         on_read_clipboard=MagicMock(),

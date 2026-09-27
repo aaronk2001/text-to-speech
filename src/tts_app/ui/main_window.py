@@ -7,6 +7,7 @@ from threading import Thread
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Slot
 from PySide6.QtGui import QAction, QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QFileDialog,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 from tts_app.audio.encode import resolve_output
 from tts_app.audio.export import export_speech
 from tts_app.audio.playback import PlaybackController, PlaybackState
+from tts_app.clipboard import read_clipboard_text
 from tts_app.config import AppSettings, save_settings
 from tts_app.engines.base import TTSEngine, Voice
 from tts_app.engines.registry import EngineRegistry
@@ -61,6 +63,8 @@ def _glass_card(content: QVBoxLayout) -> QFrame:
 
 
 class MainWindow(QMainWindow):
+    hidden_to_tray = Signal()
+
     # Emitted from the save worker thread; delivered on the UI thread.
     _save_finished = Signal(str)
     _save_failed = Signal(str)
@@ -83,6 +87,8 @@ class MainWindow(QMainWindow):
         self._current_voice: Voice | None = None
         self._engines_probed = False
         self._engine_buttons: dict[str, QPushButton] = {}
+        self._close_to_tray = False
+        self._quitting = False
 
         self._setup_ui()
         self._setup_status_bar()
@@ -179,7 +185,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
 
         quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(self.close)
+        quit_action.triggered.connect(self.quit_app)
         menu.addAction(quit_action)
         return menu
 
@@ -577,6 +583,20 @@ class MainWindow(QMainWindow):
         self._playback.play_segments(segments, synth_segment)
 
     @Slot()
+    def read_clipboard(self) -> None:
+        """Global hotkey / tray: read the clipboard aloud. Again on the same text stops."""
+        text = read_clipboard_text(QApplication.instance())
+        reading = self._playback.state() != PlaybackState.IDLE
+        if reading and (not text or text == self._text_edit.toPlainText()):
+            self._on_stop()
+            return
+        if not text:
+            self.statusBar().showMessage("Clipboard has no text to read", 4000)
+            return
+        self._text_edit.setPlainText(text)
+        self._speak_editor_text()
+
+    @Slot()
     def toggle_pause(self) -> None:
         if self._playback.state() == PlaybackState.PLAYING:
             self._playback.pause()
@@ -849,6 +869,29 @@ class MainWindow(QMainWindow):
         self._pitch_label.setText(f"{self._settings.pitch:.2f}x")
         self._volume_label.setText(f"{self._settings.volume:.2f}")
 
+    def show_and_raise(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def set_close_to_tray(self, enabled: bool) -> None:
+        """Closing the window hides it instead (the app keeps running in the tray)."""
+        self._close_to_tray = enabled
+
+    @Slot()
+    def quit_app(self) -> None:
+        self._quitting = True
+        save_settings(self._settings)
+        QApplication.quit()
+
     def closeEvent(self, event) -> None:
         save_settings(self._settings)
+        if self._close_to_tray and not self._quitting:
+            event.ignore()
+            self.hide()
+            self.hidden_to_tray.emit()
+            return
         super().closeEvent(event)

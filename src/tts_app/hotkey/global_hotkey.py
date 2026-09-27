@@ -8,6 +8,11 @@ from PySide6.QtCore import QObject, Signal, Slot
 logger = logging.getLogger(__name__)
 
 
+def format_hotkey(spec: str) -> str:
+    """'ctrl+alt+s' -> 'Ctrl+Alt+S' for menus and messages."""
+    return "+".join(part.strip().capitalize() for part in spec.split("+"))
+
+
 def _try_import_keyboard() -> Any | None:
     try:
         import keyboard  # type: ignore[import-untyped]
@@ -35,6 +40,9 @@ class GlobalHotkey(QObject):
         if self._keyboard is None:
             return "Install the `keyboard` package: pip install keyboard"
         return None
+
+    def is_running(self) -> bool:
+        return self._running
 
     def start(self) -> None:
         if self._keyboard is None or self._running:
