@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from PySide6.QtCore import QSize, QThread, Signal, Slot
@@ -321,7 +321,7 @@ class FirstRunWizard(QWizard):
 
             voice = voices[0]
 
-            def synthesize():
+            def synthesize() -> Iterator[bytes]:
                 return engine.synthesize("Audio is working.", voice)
 
             self.playback.play(synthesize)

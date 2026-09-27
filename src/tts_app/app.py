@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
+from typing import ClassVar, cast
 
-from PySide6.QtCore import QThread, QTimer, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class _EngineProbeThread(QThread):
     completed = Signal()
 
-    def __init__(self, registry: EngineRegistry, parent=None) -> None:
+    def __init__(self, registry: EngineRegistry, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._registry = registry
 
@@ -42,7 +42,7 @@ class App:
     _instance: ClassVar[App | None] = None
 
     def __init__(self, argv: list[str]) -> None:
-        self._app = QApplication.instance() or QApplication(argv)
+        self._app = cast(QApplication, QApplication.instance() or QApplication(argv))
         self._app.setApplicationName("TTS App")
         self._app.setOrganizationName("TTSApp")
         self._app.setWindowIcon(app_icon())
@@ -197,11 +197,12 @@ class App:
 
     def _try_acquire_singleton(self) -> bool:
         QLocalServer.removeServer("TTSApp.singleton")
-        self._local_server = QLocalServer()
+        server = QLocalServer()
+        self._local_server = server
 
-        if self._local_server.listen("TTSApp.singleton"):
+        if server.listen("TTSApp.singleton"):
             def on_new_connection() -> None:
-                conn = self._local_server.nextPendingConnection()
+                conn = server.nextPendingConnection()
                 if conn and self._main_window:
                     self._main_window.show_and_raise()
                 if conn:

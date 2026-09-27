@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Slot
-from PySide6.QtGui import QAction, QColor, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -36,8 +38,8 @@ from tts_app.engines.base import TTSEngine, Voice
 from tts_app.engines.registry import EngineRegistry
 from tts_app.text.segment import Segment, segment_text
 from tts_app.ui.effects import HoverGlow, OpacityPulse
+from tts_app.ui.motion import ReducedMotion, should_animate
 from tts_app.ui.motion import policy as motion_policy
-from tts_app.ui.motion import should_animate
 from tts_app.ui.preferences import PreferencesDialog
 from tts_app.ui.rvc_card_grid import RvcCardGrid
 from tts_app.ui.transport_progress import TransportProgressSlider
@@ -47,6 +49,10 @@ from tts_app.ui.waveform import WaveformWidget
 from tts_app.ui.widgets import ErrorBanner, HamburgerButton, StatusDot, Wordmark
 
 logger = logging.getLogger(__name__)
+
+
+def _qapp() -> QApplication:
+    return cast(QApplication, QApplication.instance())
 
 
 def _section_label(text: str) -> QLabel:
@@ -71,6 +77,14 @@ class MainWindow(QMainWindow):
     # Emitted from the save worker thread; delivered on the UI thread.
     _save_finished = Signal(str)
     _save_failed = Signal(str)
+
+    # Created by _param_row() via setattr.
+    _rate_slider: QSlider
+    _pitch_slider: QSlider
+    _volume_slider: QSlider
+    _rate_label: QLabel
+    _pitch_label: QLabel
+    _volume_label: QLabel
 
     def __init__(
         self,
@@ -170,7 +184,12 @@ class MainWindow(QMainWindow):
 
         motion_menu = QMenu("Reduced Motion", menu)
         self._motion_actions: dict[str, QAction] = {}
-        for label, value in (("Follow OS", "auto"), ("Always On", "on"), ("Always Off", "off")):
+        options: tuple[tuple[str, ReducedMotion], ...] = (
+            ("Follow OS", "auto"),
+            ("Always On", "on"),
+            ("Always Off", "off"),
+        )
+        for label, value in options:
             act = QAction(label, self)
             act.setCheckable(True)
             act.triggered.connect(lambda _checked=False, v=value: self._set_reduced_motion(v))
@@ -198,12 +217,12 @@ class MainWindow(QMainWindow):
         menu.addAction(quit_action)
         return menu
 
-    def _set_reduced_motion(self, value: str) -> None:
+    def _set_reduced_motion(self, value: ReducedMotion) -> None:
         p = motion_policy()
         if p is not None:
             p.set_preference(value)
         else:
-            self._settings.reduced_motion = value  # type: ignore[assignment]
+            self._settings.reduced_motion = value
         save_settings(self._settings)
         for v, act in self._motion_actions.items():
             act.setChecked(v == value)
@@ -592,7 +611,7 @@ class MainWindow(QMainWindow):
         pitch = self._settings.pitch
         volume = self._settings.volume
 
-        def synth_segment(seg: Segment):
+        def synth_segment(seg: Segment) -> Iterator[bytes]:
             yield from engine.synthesize(seg.text, voice, rate=rate, pitch=pitch, volume=volume)
 
         self._playback.play_segments(segments, synth_segment)
@@ -600,7 +619,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def read_clipboard(self) -> None:
         """Global hotkey / tray: read the clipboard aloud. Again on the same text stops."""
-        text = read_clipboard_text(QApplication.instance())
+        text = read_clipboard_text(_qapp())
         reading = self._playback.state() != PlaybackState.IDLE
         if reading and (not text or text == self._text_edit.toPlainText()):
             self._on_stop()
@@ -756,7 +775,7 @@ class MainWindow(QMainWindow):
         pitch = self._settings.pitch
         volume = self._settings.volume
 
-        def synth_iter():
+        def synth_iter() -> Iterator[bytes]:
             yield from engine.synthesize(text, voice, rate=rate, pitch=pitch, volume=volume)
 
         self._playback.play(synth_iter)
@@ -977,13 +996,13 @@ class MainWindow(QMainWindow):
         save_settings(self._settings)
         QApplication.quit()
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         save_settings(self._settings)
         # During OS logoff/shutdown a refused close would cancel the session end.
         if (
             self._close_to_tray
             and not self._quitting
-            and not QApplication.instance().isSavingSession()
+            and not _qapp().isSavingSession()
         ):
             event.ignore()
             self.hide()

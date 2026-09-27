@@ -8,7 +8,7 @@ import tempfile
 import wave
 from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import platformdirs
@@ -170,7 +170,7 @@ class RvcEngine(TTSEngine):
             tmp_in.unlink(missing_ok=True)
             _discard_output(out_path)
 
-    def _get_converter(self):
+    def _get_converter(self) -> Any:
         if self._converter is not None:
             return self._converter
         import torch

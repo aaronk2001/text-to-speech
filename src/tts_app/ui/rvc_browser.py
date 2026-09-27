@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import requests
 from PySide6.QtCore import Qt, QThread, Signal, Slot
@@ -201,7 +202,7 @@ class RvcBrowserWidget(QWidget):
         self._search_worker.start()
 
     @Slot(list)
-    def _on_search_results(self, results: list) -> None:
+    def _on_search_results(self, results: list[dict[str, Any]]) -> None:
         self._search_btn.setEnabled(True)
         self._status_label.setText(f"Found {len(results)} models")
 

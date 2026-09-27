@@ -275,6 +275,8 @@ class VoiceBrowser(QDialog):
             root = self._download_tree.invisibleRootItem()
             for i in range(root.childCount()):
                 row = root.child(i)
+                if row is None:
+                    continue
                 row_text = " ".join(
                     row.text(c) for c in range(row.columnCount())
                 ).lower()

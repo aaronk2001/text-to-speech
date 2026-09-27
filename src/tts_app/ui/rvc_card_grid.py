@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+from typing import Any
 
-from PySide6.QtCore import QRectF, QSize, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QRectF, QSize, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStyle,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -45,10 +47,17 @@ CARD_H = 132
 
 
 class _CardDelegate(QStyledItemDelegate):
-    def sizeHint(self, option, index) -> QSize:
+    def sizeHint(
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> QSize:
         return QSize(CARD_W, CARD_H)
 
-    def paint(self, painter: QPainter, option, index) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -219,7 +228,7 @@ class RvcCardGrid(QWidget):
         self._search_worker.start()
 
     @Slot(list)
-    def _on_search_results(self, results: list) -> None:
+    def _on_search_results(self, results: list[dict[str, Any]]) -> None:
         self._status_label.setText(f"{len(results)} models")
         self._model.clear()
         for r in results:
@@ -236,7 +245,7 @@ class RvcCardGrid(QWidget):
     def _on_search_error(self, error: str) -> None:
         self._status_label.setText(f"Search failed: {error}")
 
-    def _on_selection_changed(self, *_args) -> None:
+    def _on_selection_changed(self, *_args: object) -> None:
         sel = self._view.selectionModel()
         self._download_btn.setEnabled(bool(sel and sel.selectedIndexes()))
 

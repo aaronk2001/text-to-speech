@@ -22,7 +22,7 @@ _CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 def _try_import_piper() -> Any | None:
     try:
-        from piper import PiperVoice, SynthesisConfig  # type: ignore[import-untyped]
+        from piper import PiperVoice, SynthesisConfig
 
         return (PiperVoice, SynthesisConfig)
     except Exception as e:

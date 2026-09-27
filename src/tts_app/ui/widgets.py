@@ -8,6 +8,7 @@ from PySide6.QtGui import (
     QLinearGradient,
     QPainter,
     QPainterPath,
+    QPaintEvent,
     QPen,
     QRadialGradient,
 )
@@ -37,7 +38,7 @@ class Wordmark(QWidget):
         fm = QFontMetrics(self._font)
         return QSize(self.GLYPH + self.GAP + fm.horizontalAdvance(self._text), 28)
 
-    def paintEvent(self, _event) -> None:
+    def paintEvent(self, _event: QPaintEvent) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -92,7 +93,7 @@ class StatusDot(QWidget):
         self.setToolTip(tooltip or state.capitalize())
         self.update()
 
-    def paintEvent(self, _event) -> None:
+    def paintEvent(self, _event: QPaintEvent) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         cx, cy = 8, 8
@@ -118,7 +119,7 @@ class HamburgerButton(QPushButton):
         self.setFixedSize(36, 32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)

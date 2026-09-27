@@ -33,7 +33,8 @@ def sequence_to_hotkey(seq: QKeySequence) -> str:
     """First chord of a QKeySequence as a `keyboard` spec, e.g. 'ctrl+alt+s'."""
     if seq.isEmpty():
         return ""
-    text = QKeySequence(seq[0]).toString(QKeySequence.SequenceFormat.PortableText)
+    # Multi-chord sequences print as "Ctrl+K, Ctrl+S"; only the first chord is used.
+    text = seq.toString(QKeySequence.SequenceFormat.PortableText).split(", ")[0]
     # "Ctrl++" means Ctrl and the plus key; keep that last '+' as a key.
     parts = text[:-2].split("+") + ["plus"] if text.endswith("++") else text.split("+")
     return "+".join(_QT_TO_KEYBOARD.get(p.lower(), p.lower()) for p in parts if p)

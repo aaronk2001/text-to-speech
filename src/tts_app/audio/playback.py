@@ -12,6 +12,7 @@ from PySide6.QtCore import QIODevice, QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSink, QMediaDevices
 
 from tts_app.engines.base import SYNTHESIS_LOCK
+from tts_app.text.segment import Segment
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,8 @@ class _SynthWorker(QThread):
         self,
         generation: int,
         synthesize_callable: Callable[[], Iterator[bytes]] | None = None,
-        segments: list | None = None,
-        segment_synth: Callable[[object], Iterator[bytes]] | None = None,
+        segments: list[Segment] | None = None,
+        segment_synth: Callable[[Segment], Iterator[bytes]] | None = None,
     ) -> None:
         super().__init__()
         self._generation = generation
@@ -184,8 +185,8 @@ class PlaybackController(QObject):
 
     def play_segments(
         self,
-        segments: list,
-        segment_synth: Callable[[object], Iterator[bytes]],
+        segments: list[Segment],
+        segment_synth: Callable[[Segment], Iterator[bytes]],
     ) -> None:
         self._start(segments=segments, segment_synth=segment_synth)
 
@@ -375,7 +376,8 @@ class PlaybackController(QObject):
     def _on_sink_state_changed(self, state: QAudio.State) -> None:
         if state != QAudio.State.IdleState or self._sink is None:
             return
-        if self._sink.state() != QAudio.State.IdleState:
+        # (QAudio is an alias of QtAudio at runtime; the stubs treat them as distinct.)
+        if self._sink.state() != QAudio.State.IdleState:  # type: ignore[comparison-overlap]
             return  # stale: more audio was written after this was queued
         self._sink_drained = True
         self._maybe_finish()

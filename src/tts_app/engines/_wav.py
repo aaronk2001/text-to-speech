@@ -63,4 +63,5 @@ def resample_mono(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
         return np.zeros(0, dtype=np.float32)
     x_old = np.linspace(0.0, 1.0, num=audio.size, endpoint=False)
     x_new = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
-    return np.interp(x_new, x_old, audio).astype(np.float32)
+    out: np.ndarray = np.interp(x_new, x_old, audio).astype(np.float32)
+    return out

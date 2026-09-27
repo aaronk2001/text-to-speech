@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Property, QPropertyAnimation, QRectF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
-from PySide6.QtWidgets import QSlider
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPaintEvent, QPen
+from PySide6.QtWidgets import QSlider, QWidget
 
 from tts_app.ui.motion import should_animate
 
 
 class TransportProgressSlider(QSlider):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(Qt.Orientation.Horizontal, parent)
         self.setObjectName("progressSlider")
         self._phase = 0.0
@@ -45,7 +45,7 @@ class TransportProgressSlider(QSlider):
         self._phase = 0.0
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect()

@@ -4,7 +4,7 @@ import logging
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import platformdirs
@@ -77,7 +77,7 @@ class SupertonicEngine(TTSEngine):
             for name, gender in _VOICES
         ]
 
-    def _get_tts(self):
+    def _get_tts(self) -> Any:
         if self._tts is not None:
             return self._tts
         from supertonic import TTS
