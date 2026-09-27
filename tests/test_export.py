@@ -95,4 +95,18 @@ def test_export_failure_removes_partial_file(tmp_path: Path) -> None:
             engine, engine.list_voices()[0], "First one. Second one.", dest, OutputFormat.WAV
         )
 
-    assert not dest.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_export_failure_keeps_existing_file(tmp_path: Path) -> None:
+    engine = _RecordingEngine(fail_on="Second one.")
+    dest = tmp_path / "out.wav"
+    dest.write_bytes(b"previous take")
+
+    with pytest.raises(SynthesisError):
+        export_speech(
+            engine, engine.list_voices()[0], "First one. Second one.", dest, OutputFormat.WAV
+        )
+
+    assert dest.read_bytes() == b"previous take"
+    assert list(tmp_path.iterdir()) == [dest]

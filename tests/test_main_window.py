@@ -57,11 +57,13 @@ def window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[MainWindow]:
     monkeypatch.setattr(main_window, "save_settings", lambda _settings: None)
+    clipboard_before = QApplication.clipboard().text()  # tests write to the real clipboard
     playback = PlaybackController()
     w = MainWindow(EngineRegistry([engine]), playback, AppSettings())
     qtbot.addWidget(w)
     yield w
     playback.shutdown()
+    QApplication.clipboard().setText(clipboard_before)
 
 
 def _state(w: MainWindow) -> PlaybackState:

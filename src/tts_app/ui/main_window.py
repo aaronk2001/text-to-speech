@@ -703,14 +703,16 @@ class MainWindow(QMainWindow):
         if not self._current_engine or not self._current_voice:
             return
 
+        # Runs on the synthesis thread: capture now, not when the thread gets to it.
+        engine = self._current_engine
+        voice = self._current_voice
+        text = self._settings.preview_text
+        rate = self._settings.rate
+        pitch = self._settings.pitch
+        volume = self._settings.volume
+
         def synth_iter():
-            yield from self._current_engine.synthesize(
-                self._settings.preview_text,
-                self._current_voice,
-                rate=self._settings.rate,
-                pitch=self._settings.pitch,
-                volume=self._settings.volume,
-            )
+            yield from engine.synthesize(text, voice, rate=rate, pitch=pitch, volume=volume)
 
         self._playback.play(synth_iter)
 
@@ -889,7 +891,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         save_settings(self._settings)
-        if self._close_to_tray and not self._quitting:
+        # During OS logoff/shutdown a refused close would cancel the session end.
+        if (
+            self._close_to_tray
+            and not self._quitting
+            and not QApplication.instance().isSavingSession()
+        ):
             event.ignore()
             self.hide()
             self.hidden_to_tray.emit()

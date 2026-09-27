@@ -93,7 +93,7 @@ tts_app.bat   # Windows launch shim
 install.ps1   # creates venv + Desktop/Start Menu shortcuts
 ```
 
-Tests run headless: `QT_QPA_PLATFORM=offscreen pytest` works without a sound card (playback tests use a fake audio sink).
+Tests don't need a sound card (playback tests use a fake audio sink). On a machine without a display, set `QT_QPA_PLATFORM=offscreen`.
 
 Add a new engine: subclass `TTSEngine` in `src/tts_app/engines/`, register it in `engines/registry.py:build_default_engines()`. Tests in `tests/test_<engine>_engine.py`.
 

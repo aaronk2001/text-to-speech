@@ -21,7 +21,8 @@ def export_speech(
 ) -> Path:
     """Synthesize text sentence by sentence, as playback does, and encode it to dest.
 
-    Runs on a worker thread; a partially written file is removed on failure.
+    Runs on a worker thread. Writes to a temporary file first, so a failure
+    leaves neither a partial file nor a damaged copy of an existing dest.
     """
     ensure_encoder(fmt)  # fail before spending minutes on synthesis
 
@@ -33,8 +34,11 @@ def export_speech(
                 )
             yield from chunks
 
+    part = dest.with_name(dest.name + ".part")
     try:
-        return encode_pcm_to_file(pcm(), dest, fmt)
+        encode_pcm_to_file(pcm(), part, fmt)
+        part.replace(dest)
     except BaseException:
-        dest.unlink(missing_ok=True)
+        part.unlink(missing_ok=True)
         raise
+    return dest
