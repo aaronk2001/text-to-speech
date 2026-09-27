@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -33,6 +34,10 @@ class Voice:
 PCM_SAMPLE_RATE = 22050
 PCM_CHANNELS = 1
 PCM_SAMPLE_WIDTH_BYTES = 2  # s16le
+
+# Engines wrap native runtimes (SAPI/COM, ONNX sessions) that aren't safe to drive
+# from two threads at once. Hold this around any synthesis done off the UI thread.
+SYNTHESIS_LOCK = threading.Lock()
 
 
 class TTSEngine(ABC):

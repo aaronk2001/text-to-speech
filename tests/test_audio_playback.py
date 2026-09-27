@@ -32,9 +32,10 @@ def test_playback_controller_creation(qtbot) -> None:
 def test_playback_state_enum_values() -> None:
     """Test PlaybackState enum values."""
     assert PlaybackState.IDLE == 0
-    assert PlaybackState.PLAYING == 1
-    assert PlaybackState.PAUSED == 2
-    assert PlaybackState.STOPPED == 3
+    assert PlaybackState.SYNTHESIZING == 1
+    assert PlaybackState.PLAYING == 2
+    assert PlaybackState.PAUSED == 3
+    assert PlaybackState.STOPPED == 4
 
 
 def test_playback_controller_play_and_finish(qtbot) -> None:

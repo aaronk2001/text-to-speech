@@ -368,7 +368,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(progress_row)
 
         self._play_btn.clicked.connect(self._on_play)
-        self._pause_btn.clicked.connect(self._on_pause)
+        self._pause_btn.clicked.connect(self.toggle_pause)
         self._stop_btn.clicked.connect(self._on_stop)
         self._save_btn.clicked.connect(self._on_save)
         self._rewind_btn.clicked.connect(self._on_rewind)
@@ -539,6 +539,13 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_play(self) -> None:
+        # While audio is out, this button is labelled Pause / Resume.
+        if self._playback.state() in (PlaybackState.PLAYING, PlaybackState.PAUSED):
+            self.toggle_pause()
+            return
+        self._speak_editor_text()
+
+    def _speak_editor_text(self) -> None:
         if not self._current_engine or not self._current_voice:
             return
 
@@ -562,10 +569,10 @@ class MainWindow(QMainWindow):
         self._playback.play_segments(segments, synth_segment)
 
     @Slot()
-    def _on_pause(self) -> None:
-        if self._playback._state == PlaybackState.PLAYING:
+    def toggle_pause(self) -> None:
+        if self._playback.state() == PlaybackState.PLAYING:
             self._playback.pause()
-        elif self._playback._state == PlaybackState.PAUSED:
+        elif self._playback.state() == PlaybackState.PAUSED:
             self._playback.resume()
 
     @Slot()
