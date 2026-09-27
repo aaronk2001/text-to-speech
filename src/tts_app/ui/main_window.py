@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from threading import Thread
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Slot
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Slot
 from PySide6.QtGui import QAction, QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tts_app.audio.encode import encode_pcm_to_file, format_from_extension
+from tts_app.audio.encode import resolve_output
+from tts_app.audio.export import export_speech
 from tts_app.audio.playback import PlaybackController, PlaybackState
 from tts_app.config import AppSettings, save_settings
 from tts_app.engines.base import TTSEngine, Voice
@@ -60,6 +61,10 @@ def _glass_card(content: QVBoxLayout) -> QFrame:
 
 
 class MainWindow(QMainWindow):
+    # Emitted from the save worker thread; delivered on the UI thread.
+    _save_finished = Signal(str)
+    _save_failed = Signal(str)
+
     def __init__(
         self,
         registry: EngineRegistry,
@@ -466,6 +471,9 @@ class MainWindow(QMainWindow):
         self._playback.synthesizing.connect(self._on_synthesizing)
         self._playback.segment_changed.connect(self._highlight_segment)
 
+        self._save_finished.connect(self._on_save_finished)
+        self._save_failed.connect(self._on_save_failed)
+
     def _install_effects(self) -> None:
         HoverGlow(self._add_voice_btn, color="#3b82f6", max_radius=24)
         HoverGlow(self._play_btn, color="#3b82f6", max_radius=28)
@@ -589,7 +597,7 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save Audio",
             "",
@@ -599,26 +607,37 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
 
-        fmt = format_from_extension(Path(file_path).suffix)
-        if not fmt:
-            return
+        dest, fmt = resolve_output(Path(file_path), selected_filter)
+        # Snapshot everything the worker needs; the UI may change while it runs.
+        engine = self._current_engine
+        voice = self._current_voice
+        rate = self._settings.rate
+        pitch = self._settings.pitch
+        volume = self._settings.volume
 
-        def save_worker():
+        def save_worker() -> None:
             try:
-                synth = self._current_engine.synthesize(
-                    text,
-                    self._current_voice,
-                    rate=self._settings.rate,
-                    pitch=self._settings.pitch,
-                    volume=self._settings.volume,
+                export_speech(
+                    engine, voice, text, dest, fmt, rate=rate, pitch=pitch, volume=volume
                 )
-                encode_pcm_to_file(synth, Path(file_path), fmt)
             except Exception as e:
                 logger.exception("Failed to save audio")
-                self._playback.error.emit(f"Save failed: {e}")
+                self._save_failed.emit(f"Save failed: {e}")
+            else:
+                self._save_finished.emit(str(dest))
 
+        self.statusBar().showMessage(f"Saving {dest.name}…")
         thread = Thread(target=save_worker, daemon=True)
         thread.start()
+
+    @Slot(str)
+    def _on_save_finished(self, path: str) -> None:
+        self.statusBar().showMessage(f"Saved {path}", 8000)
+
+    @Slot(str)
+    def _on_save_failed(self, message: str) -> None:
+        self.statusBar().clearMessage()
+        self._on_playback_error(message)
 
     @Slot()
     def _on_rewind(self) -> None:
