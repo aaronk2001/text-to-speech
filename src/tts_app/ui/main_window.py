@@ -727,14 +727,7 @@ class MainWindow(QMainWindow):
     def _on_browse_voices(self) -> None:
         browser = VoiceBrowser(self._registry)
         accepted = browser.exec() == 1
-        # The browser can download voices, which changes what's available.
-        self._registry.refresh()
-        if self._current_engine not in self._registry.available():
-            self._current_engine = self._registry.pick_default(self._settings.engine_preference)
-            self._current_voice = None
-        self._refresh_engine_pills()
-        self._repopulate_voices()
-        self._update_status()
+        self.refresh_engines()  # the browser can download voices
         if accepted:
             voice = browser.selectedVoice()
             if voice:
@@ -904,12 +897,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_engines_probed(self) -> None:
         self._engines_probed = True
+        self.refresh_engines()
+
+    def refresh_engines(self) -> None:
+        """Re-check engines and voices, e.g. after voices were installed."""
         self._registry.refresh()
         available = self._registry.available()
         if self._current_engine not in available:
             self._current_engine = self._registry.pick_default(self._settings.engine_preference)
             self._current_voice = None
-            self._repopulate_voices()
+        self._repopulate_voices()
         self._refresh_engine_pills()
 
         if self._settings.last_voice_id and not self._current_voice:

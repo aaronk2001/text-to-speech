@@ -38,7 +38,7 @@ cd C:\path\to\Text-to-speach
 .\install.ps1
 ```
 
-That creates a venv, installs deps, drops a `TTS App.lnk` on your Desktop and Start Menu, and launches the app.
+That creates a venv, installs deps, drops a `TTS App.lnk` on your Desktop and Start Menu, and launches the app, which opens a short setup wizard the first time (engines, a Piper voice download, an audio test).
 
 ## Run
 
@@ -85,7 +85,7 @@ src/tts_app/
   engines/    # TTSEngine ABC + Supertonic, Piper, SAPI adapters (RVC experimental)
   audio/      # QAudioSink playback, WAV/MP3/OGG export
   text/       # sentence segmentation (playback, highlighting, export)
-  ui/         # main window, voice browser, tray, first-run wizard (not wired up yet)
+  ui/         # main window, voice browser, tray, preferences, first-run wizard
   config/     # config.json schema + store (pydantic)
   hotkey/     # global Ctrl+Alt+S
 launcher.py   # pythonw entry point
@@ -104,7 +104,7 @@ Add a new engine: subclass `TTSEngine` in `src/tts_app/engines/`, register it in
 - `%LOCALAPPDATA%\TTSApp\supertonic\` — Supertonic model (if installed)
 - `%LOCALAPPDATA%\TTSApp\Logs\tts_app.log` (rotated) — runtime log; `launcher.log` there catches startup crashes
 
-Delete the config file to reset to defaults.
+Delete the config file to reset to defaults (the first-run wizard shows again).
 
 ## License
 

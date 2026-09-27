@@ -11,6 +11,7 @@ from tts_app.audio.playback import PlaybackController, PlaybackState
 from tts_app.config import load_settings, save_settings
 from tts_app.engines.registry import EngineRegistry, build_default_engines
 from tts_app.hotkey.global_hotkey import GlobalHotkey, format_hotkey
+from tts_app.ui.first_run import FirstRunWizard
 from tts_app.ui.icon import app_icon
 from tts_app.ui.main_window import MainWindow
 from tts_app.ui.motion import init_motion
@@ -80,10 +81,24 @@ class App:
         QTimer.singleShot(0, self._probe.start)
 
         if not self._settings.first_run_complete:
-            self._settings.first_run_complete = True
-            save_settings(self._settings)
+            QTimer.singleShot(0, lambda: self._run_first_run(self._main_window))
 
         return self._app.exec()
+
+    def _run_first_run(self, window: MainWindow | None) -> None:
+        if window is None:
+            return
+        wizard = FirstRunWizard(
+            parent=window,
+            registry=self._registry,
+            settings=self._settings,
+            playback=self._playback,
+        )
+        wizard.exec()
+        # Finished or cancelled, don't ask again on every launch.
+        self._settings.first_run_complete = True
+        save_settings(self._settings)
+        window.refresh_engines()
 
     def _apply_hotkey(self, window: MainWindow) -> None:
         """(Re)register the global hotkey to match settings; None if it isn't running."""
