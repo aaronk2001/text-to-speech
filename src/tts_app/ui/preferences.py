@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from tts_app.config import AppSettings
+from tts_app.engines.base import Voice
 
 # Qt portable key names -> names the `keyboard` package understands.
 _QT_TO_KEYBOARD = {
@@ -48,7 +50,12 @@ def hotkey_to_sequence(spec: str) -> QKeySequence:
 class PreferencesDialog(QDialog):
     """Edits the settings that have no other UI. Writes into `settings` on OK."""
 
-    def __init__(self, settings: AppSettings, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        settings: AppSettings,
+        parent: QWidget | None = None,
+        rvc_base_voices: list[Voice] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self._settings = settings
@@ -64,6 +71,16 @@ class PreferencesDialog(QDialog):
 
         self._preview_text = QLineEdit(settings.preview_text)
 
+        # Which voice RVC converts from; only offered when there's a choice to make.
+        self._rvc_base: QComboBox | None = None
+        if rvc_base_voices:
+            self._rvc_base = QComboBox()
+            self._rvc_base.addItem("First available", None)
+            for v in rvc_base_voices:
+                self._rvc_base.addItem(v.display, v.id)
+            index = self._rvc_base.findData(settings.rvc_base_voice_id)
+            self._rvc_base.setCurrentIndex(max(index, 0))
+
         self._error = QLabel()
         self._error.setProperty("role", "bodyMuted")
         self._error.setVisible(False)
@@ -72,6 +89,8 @@ class PreferencesDialog(QDialog):
         form.addRow(self._hotkey_enabled)
         form.addRow("Hotkey", self._hotkey)
         form.addRow("Preview text", self._preview_text)
+        if self._rvc_base is not None:
+            form.addRow("RVC speaks from", self._rvc_base)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -94,6 +113,8 @@ class PreferencesDialog(QDialog):
         self._settings.hotkey_enabled = enabled
         if spec:
             self._settings.hotkey = spec
+        if self._rvc_base is not None:
+            self._settings.rvc_base_voice_id = self._rvc_base.currentData()
         self._settings.preview_text = (
             self._preview_text.text().strip() or AppSettings().preview_text
         )

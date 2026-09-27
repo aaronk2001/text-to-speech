@@ -249,3 +249,25 @@ def test_save_asks_before_replacing_a_file_under_the_added_extension(
         window.cancel_save()
         assert existing.read_bytes() == b"keep me"
     assert asked and "speech.wav" in asked[0]
+
+
+def test_rvc_models_dialog_rechecks_rvc(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rechecked: list[bool] = []
+
+    class _Rvc(_ToneEngine):
+        name = "rvc"
+
+        def is_available(self) -> bool:
+            return False
+
+        def recheck(self) -> None:
+            rechecked.append(True)
+
+    window._registry = EngineRegistry([_ToneEngine(), _Rvc()])
+    monkeypatch.setattr(main_window.QDialog, "exec", lambda self: 0)
+
+    window._on_rvc_voices()
+
+    assert rechecked == [True]

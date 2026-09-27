@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from tts_app.audio.playback import PlaybackController, PlaybackState
 from tts_app.config import load_settings, save_settings
 from tts_app.engines.registry import EngineRegistry, build_default_engines
+from tts_app.engines.rvc_engine import RvcEngine
 from tts_app.hotkey.global_hotkey import GlobalHotkey, format_hotkey
 from tts_app.ui.first_run import FirstRunWizard
 from tts_app.ui.icon import app_icon
@@ -29,9 +30,11 @@ class _EngineProbeThread(QThread):
         self._registry = registry
 
     def run(self) -> None:
-        engine = self._registry.get("supertonic")
-        if engine is not None and hasattr(engine, "recheck"):
-            engine.recheck()
+        # Both imports are slow (supertonic: ONNX; rvc: torch), so do them here.
+        for name in ("supertonic", "rvc"):
+            engine = self._registry.get(name)
+            if engine is not None and hasattr(engine, "recheck"):
+                engine.recheck()
         self.completed.emit()
 
 
@@ -47,6 +50,7 @@ class App:
         self._registry = EngineRegistry(build_default_engines())
         self._playback = PlaybackController()
         self._settings = load_settings()
+        self._apply_rvc_settings()
 
         apply_nexus_dark(self._app)
         init_motion(self._settings)
@@ -84,6 +88,15 @@ class App:
             QTimer.singleShot(0, lambda: self._run_first_run(self._main_window))
 
         return self._app.exec()
+
+    def _apply_rvc_settings(self) -> None:
+        rvc = self._registry.get("rvc")
+        if not isinstance(rvc, RvcEngine):
+            return
+        base = self._registry.get(self._settings.rvc_base_engine)
+        if base is not None and base is not rvc:
+            rvc.set_base_engine(base)
+        rvc.set_base_voice(self._settings.rvc_base_voice_id)
 
     def _run_first_run(self, window: MainWindow | None) -> None:
         if window is None:
@@ -147,6 +160,8 @@ class App:
         window = self._main_window
         if window is None:
             return
+        self._apply_rvc_settings()
+        self._registry.refresh()
         self._apply_hotkey(window)
         self._apply_residency(window)
         if self._settings.hotkey_enabled and self._hotkey is None:

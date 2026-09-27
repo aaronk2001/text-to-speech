@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 from tts_app.engines.base import TTSEngine, Voice
 from tts_app.engines.piper import PiperEngine
+from tts_app.engines.rvc_engine import RvcEngine
 from tts_app.engines.sapi import SapiEngine
 from tts_app.engines.supertonic_engine import SupertonicEngine
 
@@ -17,7 +18,10 @@ def build_default_engines() -> list[TTSEngine]:
     supertonic = SupertonicEngine()
     piper = PiperEngine()
     sapi = SapiEngine()
-    return [supertonic, piper, sapi]
+    # Voice conversion on top of Piper; only available once torch + rvc-inferpy
+    # and at least one .pth model are present (checked by RvcEngine.recheck()).
+    rvc = RvcEngine(base_engine=piper)
+    return [supertonic, piper, sapi, rvc]
 
 
 class EngineRegistry:

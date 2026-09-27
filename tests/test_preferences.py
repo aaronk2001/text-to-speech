@@ -55,3 +55,27 @@ def test_disabling_keeps_the_old_binding(qtbot: Any) -> None:
 
     assert settings.hotkey_enabled is False
     assert settings.hotkey == "ctrl+alt+r"
+
+
+def test_rvc_base_voice_choice_is_saved(qtbot: Any) -> None:
+    from tts_app.engines.base import Voice
+
+    voices = [
+        Voice(id="piper:a.onnx", engine="piper", name="a", language="en"),
+        Voice(id="piper:b.onnx", engine="piper", name="b", language="en"),
+    ]
+    settings = AppSettings()
+    dialog = PreferencesDialog(settings, rvc_base_voices=voices)
+    qtbot.addWidget(dialog)
+    assert dialog._rvc_base is not None
+    dialog._rvc_base.setCurrentIndex(dialog._rvc_base.findData("piper:b.onnx"))
+
+    dialog.accept()
+
+    assert settings.rvc_base_voice_id == "piper:b.onnx"
+
+
+def test_rvc_choice_hidden_without_voices(qtbot: Any) -> None:
+    dialog = PreferencesDialog(AppSettings())
+    qtbot.addWidget(dialog)
+    assert dialog._rvc_base is None

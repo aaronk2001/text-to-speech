@@ -123,3 +123,24 @@ def test_unbindable_hotkey_warns(
     assert keyboard.bound == []
     assert warnings and "Ctrl+Q" in warnings[0]
     assert not app._main_window._close_to_tray
+
+
+def test_rvc_base_voice_follows_settings(app: app_module.App) -> None:
+    from tts_app.engines.rvc_engine import RvcEngine
+
+    rvc = RvcEngine()
+    app._registry = app_module.EngineRegistry([_ToneEngine(), rvc])
+    app._settings.rvc_base_engine = "tone"
+    app._settings.rvc_base_voice_id = "tone:1"
+
+    app._apply_rvc_settings()
+
+    assert rvc._base_engine is app._registry.get("tone")
+    assert rvc._base_voice_id == "tone:1"
+
+
+def test_default_engines_include_rvc_behind_piper() -> None:
+    from tts_app.engines.registry import build_default_engines
+
+    names = [e.name for e in build_default_engines()]
+    assert names[-1] == "rvc"

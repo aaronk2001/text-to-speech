@@ -9,6 +9,7 @@ from PySide6.QtGui import QAction, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QDialog,
     QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,
@@ -38,6 +39,7 @@ from tts_app.ui.effects import HoverGlow, OpacityPulse
 from tts_app.ui.motion import policy as motion_policy
 from tts_app.ui.motion import should_animate
 from tts_app.ui.preferences import PreferencesDialog
+from tts_app.ui.rvc_card_grid import RvcCardGrid
 from tts_app.ui.transport_progress import TransportProgressSlider
 from tts_app.ui.voice_browser import VoiceBrowser
 from tts_app.ui.voice_picker import VoicePicker
@@ -176,6 +178,10 @@ class MainWindow(QMainWindow):
             self._motion_actions[value] = act
         self._motion_actions[self._settings.reduced_motion].setChecked(True)
         menu.addMenu(motion_menu)
+
+        rvc_action = QAction("RVC voice models…", self)
+        rvc_action.triggered.connect(self._on_rvc_voices)
+        menu.addAction(rvc_action)
 
         prefs = QAction("Preferences…", self)
         prefs.triggered.connect(self._on_preferences)
@@ -766,10 +772,39 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_preferences(self) -> None:
-        dialog = PreferencesDialog(self._settings, self)
+        dialog = PreferencesDialog(self._settings, self, rvc_base_voices=self._rvc_base_voices())
         if dialog.exec() == 1:
             save_settings(self._settings)
             self.preferences_changed.emit()
+
+    def _rvc_base_voices(self) -> list[Voice]:
+        if self._registry.get("rvc") is None:
+            return []
+        base = self._registry.get(self._settings.rvc_base_engine)
+        if base is None or base not in self._registry.available():
+            return []
+        return self._registry.voices(base)
+
+    @Slot()
+    def _on_rvc_voices(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("RVC voice models")
+        dialog.resize(760, 520)
+        layout = QVBoxLayout(dialog)
+        note = QLabel(
+            "Experimental: RVC converts Piper speech into another voice. It needs "
+            "torch and rvc-inferpy installed; models (.pth) are imported here."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "bodyMuted")
+        layout.addWidget(note)
+        layout.addWidget(RvcCardGrid())
+        dialog.exec()
+
+        rvc = self._registry.get("rvc")
+        if rvc is not None and hasattr(rvc, "recheck"):
+            rvc.recheck()  # models may have been added or removed
+        self.refresh_engines()
 
     @Slot()
     def _on_about(self) -> None:

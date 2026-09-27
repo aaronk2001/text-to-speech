@@ -18,7 +18,7 @@ I read a lot of articles. Existing options either phone home, cost money, sound 
 | **Piper**      | High    | Neural ONNX, CPU-only, ~60 MB per voice. Runs in-process via `piper-tts`, else `piper.exe`. |
 | **SAPI5**      | Medium  | Windows built-in, zero-config fallback (`pyttsx3`).                                        |
 
-An experimental RVC voice-conversion engine (`engines/rvc_engine.py`) is in the tree but not enabled yet.
+**RVC (experimental).** Converts Piper's speech into another voice using an RVC model. It needs `torch` and `rvc-inferpy` 0.10.2 installed by hand (see `RvcEngine.install_hint()`; on Windows that includes a fairseq build for your Python), and turns on once at least one `.pth` model is imported via ☰ → RVC voice models. Pick which Piper voice it converts from in Preferences. The first conversion downloads HuBERT and RMVPE (~300 MB).
 
 ## Install
 
@@ -82,7 +82,7 @@ Project layout:
 
 ```
 src/tts_app/
-  engines/    # TTSEngine ABC + Supertonic, Piper, SAPI adapters (RVC experimental)
+  engines/    # TTSEngine ABC + Supertonic, Piper, SAPI, RVC adapters
   audio/      # QAudioSink playback, WAV/MP3/OGG export
   text/       # sentence segmentation (playback, highlighting, export)
   ui/         # main window, voice browser, tray, preferences, first-run wizard
