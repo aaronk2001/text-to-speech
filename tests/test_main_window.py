@@ -206,3 +206,46 @@ def test_skip_buttons_enabled_only_while_audio_is_out(window: MainWindow, qtbot:
     window._play_btn.click()
     qtbot.waitUntil(lambda: _state(window) == PlaybackState.PLAYING)
     assert window._forward_btn.isEnabled() and window._rewind_btn.isEnabled()
+
+
+@pytest.mark.parametrize(("answer", "replaced"), [("Yes", True), ("No", False)])
+def test_save_asks_before_replacing_a_file_under_the_added_extension(
+    window: MainWindow,
+    qtbot: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    answer: str,
+    replaced: bool,
+) -> None:
+    existing = tmp_path / "speech.wav"
+    existing.write_bytes(b"keep me")
+    asked: list[str] = []
+
+    class _Dialog:
+        @staticmethod
+        def getSaveFileName(*_args: Any) -> tuple[str, str]:
+            return str(tmp_path / "speech"), "WAV (*.wav)"
+
+    class _Box:
+        class StandardButton:
+            Yes = "Yes"
+            No = "No"
+
+        @staticmethod
+        def question(_parent: Any, _title: str, text: str) -> str:
+            asked.append(text)
+            return answer
+
+    monkeypatch.setattr(main_window, "QFileDialog", _Dialog)
+    monkeypatch.setattr(main_window, "QMessageBox", _Box)
+    window._text_edit.setPlainText("Hello.")
+
+    if replaced:
+        with qtbot.waitSignal(window._save_finished, timeout=5000):
+            window._on_save()
+        assert existing.read_bytes() != b"keep me"
+    else:
+        window._on_save()
+        window.cancel_save()
+        assert existing.read_bytes() == b"keep me"
+    assert asked and "speech.wav" in asked[0]

@@ -25,6 +25,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+supertonic = [
+    "supertonic>=1.3",    # optional neural engine; fetches its model on first use
+]
 dev = [
     "pytest>=8",
     "pytest-qt>=4",

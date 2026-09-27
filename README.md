@@ -14,7 +14,7 @@ I read a lot of articles. Existing options either phone home, cost money, sound 
 
 | Engine         | Quality | Notes                                                                                      |
 |----------------|---------|--------------------------------------------------------------------------------------------|
-| **Supertonic** | High    | Neural ONNX, CPU, 10 English voices. Optional (`pip install supertonic`); fetches its model on first use. Preferred when installed. |
+| **Supertonic** | High    | Neural ONNX, CPU, 10 English voices. Optional extra (`.[supertonic]`); fetches its model on first use. Preferred when installed. |
 | **Piper**      | High    | Neural ONNX, CPU-only, ~60 MB per voice. Runs in-process via `piper-tts`, else `piper.exe`. |
 | **SAPI5**      | Medium  | Windows built-in, zero-config fallback (`pyttsx3`).                                        |
 
@@ -26,7 +26,7 @@ Requirements:
 
 - Windows 10/11
 - Python 3.11+ on PATH (`winget install Python.Python.3.11`)
-- Optional: `pip install supertonic` inside the venv for the Supertonic voices
+- Optional: Supertonic voices — `.\.venv\Scripts\pip install -e ".[supertonic]"` after installing
 - Optional: `ffmpeg` on PATH if you want MP3/OGG export
 - Optional: `piper.exe` on PATH or in `assets/bin/`, used only if the `piper-tts` package can't load (download from <https://github.com/OHF-Voice/piper1-gpl/releases>)
 

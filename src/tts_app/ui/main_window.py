@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
-from threading import Thread
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Slot
 from PySide6.QtGui import QAction, QColor, QTextCharFormat, QTextCursor
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from tts_app.audio.encode import resolve_output
-from tts_app.audio.export import export_speech
+from tts_app.audio.export import ExportCancelled, export_speech
 from tts_app.audio.playback import PlaybackController, PlaybackState
 from tts_app.clipboard import read_clipboard_text
 from tts_app.config import AppSettings, save_settings
@@ -88,6 +88,8 @@ class MainWindow(QMainWindow):
         self._engine_buttons: dict[str, QPushButton] = {}
         self._close_to_tray = False
         self._quitting = False
+        self._save_thread: threading.Thread | None = None
+        self._save_cancel = threading.Event()
 
         self._setup_ui()
         self._setup_status_bar()
@@ -633,6 +635,14 @@ class MainWindow(QMainWindow):
             return
 
         dest, fmt = resolve_output(Path(file_path), selected_filter)
+        # The dialog only confirmed overwriting the name as typed, not with an
+        # extension we added.
+        if dest != Path(file_path) and dest.exists():
+            answer = QMessageBox.question(
+                self, "Save Audio", f"{dest.name} already exists. Replace it?"
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         # Snapshot everything the worker needs; the UI may change while it runs.
         engine = self._current_engine
         voice = self._current_voice
@@ -640,11 +650,24 @@ class MainWindow(QMainWindow):
         pitch = self._settings.pitch
         volume = self._settings.volume
 
+        cancel = threading.Event()
+        self._save_cancel = cancel
+
         def save_worker() -> None:
             try:
                 export_speech(
-                    engine, voice, text, dest, fmt, rate=rate, pitch=pitch, volume=volume
+                    engine,
+                    voice,
+                    text,
+                    dest,
+                    fmt,
+                    rate=rate,
+                    pitch=pitch,
+                    volume=volume,
+                    cancel=cancel,
                 )
+            except ExportCancelled:
+                logger.info("Save of %s cancelled", dest)
             except Exception as e:
                 logger.exception("Failed to save audio")
                 self._save_failed.emit(f"Save failed: {e}")
@@ -652,8 +675,14 @@ class MainWindow(QMainWindow):
                 self._save_finished.emit(str(dest))
 
         self.statusBar().showMessage(f"Saving {dest.name}…")
-        thread = Thread(target=save_worker, daemon=True)
-        thread.start()
+        self._save_thread = threading.Thread(target=save_worker, daemon=True)
+        self._save_thread.start()
+
+    def cancel_save(self, timeout: float = 5.0) -> None:
+        """Stop an in-progress save between sentences and wait for it to clean up."""
+        self._save_cancel.set()
+        if self._save_thread is not None:
+            self._save_thread.join(timeout)
 
     @Slot(str)
     def _on_save_finished(self, path: str) -> None:

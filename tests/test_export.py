@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 import wave
 from collections.abc import Iterator
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from tts_app.audio.encode import OutputFormat, resolve_output
-from tts_app.audio.export import export_speech
+from tts_app.audio.export import ExportCancelled, export_speech
 from tts_app.engines.base import SynthesisError, TTSEngine, Voice
 
 
@@ -110,3 +111,26 @@ def test_export_failure_keeps_existing_file(tmp_path: Path) -> None:
 
     assert dest.read_bytes() == b"previous take"
     assert list(tmp_path.iterdir()) == [dest]
+
+
+def test_export_can_be_cancelled_between_sentences(tmp_path: Path) -> None:
+    cancel = threading.Event()
+
+    class _CancelsAfterFirst(_RecordingEngine):
+        def synthesize(self, text: str, voice: Voice, **kwargs: float) -> Iterator[bytes]:
+            yield from super().synthesize(text, voice)
+            cancel.set()  # e.g. the app started quitting while this sentence ran
+
+    engine = _CancelsAfterFirst()
+    with pytest.raises(ExportCancelled):
+        export_speech(
+            engine,
+            engine.list_voices()[0],
+            "First one. Second one.",
+            tmp_path / "out.wav",
+            OutputFormat.WAV,
+            cancel=cancel,
+        )
+
+    assert engine.calls == ["First one."]
+    assert list(tmp_path.iterdir()) == []

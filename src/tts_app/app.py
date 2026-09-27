@@ -137,6 +137,8 @@ class App:
             self._hotkey.stop()
         if self._tray is not None:
             self._tray.hide()
+        if self._main_window is not None:
+            self._main_window.cancel_save()  # else a half-written .part is left behind
         self._playback.shutdown()
         if self._probe is not None:
             self._probe.wait(5000)  # a QThread destroyed while running aborts the process
