@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QSize, Qt, Signal, Slot
-from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, Signal, Slot
+from PySide6.QtGui import QKeyEvent, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
-    QLabel,
     QLineEdit,
     QListView,
     QPushButton,
@@ -147,12 +146,12 @@ class _VoicePopup(QFrame):
         ]
         self._populate(filtered)
 
-    def _on_activated(self, index) -> None:
+    def _on_activated(self, index: QModelIndex) -> None:
         v = index.data(_ROLE_VOICE)
         if isinstance(v, Voice):
             self.voiceChosen.emit(v)
 
-    def keyPressEvent(self, event) -> None:
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Escape:
             self.close()
             return

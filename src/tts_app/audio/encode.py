@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import wave
 from collections.abc import Iterable
@@ -19,6 +20,31 @@ def format_from_extension(path: Path) -> OutputFormat:
         return OutputFormat(ext)
     except ValueError:
         raise ValueError(f"Unknown audio format: .{ext}") from None
+
+
+def resolve_output(path: Path, selected_filter: str = "") -> tuple[Path, OutputFormat]:
+    """Format from the file extension, else from a save dialog filter like 'MP3 (*.mp3)'.
+
+    In the second case the matching extension is appended to the path.
+    """
+    try:
+        return path, format_from_extension(path)
+    except ValueError:
+        pass
+    m = re.search(r"\*\.(\w+)", selected_filter)
+    try:
+        fmt = OutputFormat(m.group(1).lower()) if m else OutputFormat.WAV
+    except ValueError:
+        fmt = OutputFormat.WAV
+    return path.with_name(f"{path.name}.{fmt.value}"), fmt
+
+
+def ensure_encoder(fmt: OutputFormat) -> None:
+    """Raise RuntimeError if this machine can't write fmt."""
+    if fmt in (OutputFormat.MP3, OutputFormat.OGG) and not shutil.which("ffmpeg"):
+        raise RuntimeError(
+            "ffmpeg required for MP3/OGG; install or bundle in assets/bin"
+        )
 
 
 def encode_pcm_to_file(
@@ -46,10 +72,7 @@ def _encode_wav(pcm_chunks: Iterable[bytes], dest: Path) -> Path:
 def _encode_with_pydub(
     pcm_chunks: Iterable[bytes], dest: Path, fmt: OutputFormat
 ) -> Path:
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError(
-            "ffmpeg required for MP3/OGG; install or bundle in assets/bin"
-        )
+    ensure_encoder(fmt)
 
     try:
         from pydub import AudioSegment

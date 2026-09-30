@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import QSize, QThread, Signal, Slot
 from PySide6.QtWidgets import (
-    QApplication,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -15,10 +14,12 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
+    QWidget,
     QWizard,
     QWizardPage,
 )
 
+from tts_app.audio.playback import PlaybackController
 from tts_app.config.schema import AppSettings
 from tts_app.engines.registry import EngineRegistry
 from tts_app.engines.voices import (
@@ -53,7 +54,6 @@ class EnginesPage(QWizardPage):
         super().__init__(parent)
         self.setTitle("Detected engines")
         self.registry = registry
-        self.registerField("engines_ready", self, "engines_ready")
 
         layout = QVBoxLayout()
 
@@ -61,13 +61,13 @@ class EnginesPage(QWizardPage):
         tree.setColumnCount(2)
         tree.setHeaderLabels(["Engine", "Status"])
 
+        available = registry.available()
         for engine in registry.all():
             item = QTreeWidgetItem()
             item.setText(0, engine.name)
 
-            if engine.is_available():
-                voices = engine.list_voices()
-                voice_count = len(voices)
+            if engine in available:
+                voice_count = len(registry.voices(engine))
                 status = f"Available · {voice_count} voice{'s' if voice_count != 1 else ''}"
             else:
                 hint = engine.install_hint() or "No install hint available"
@@ -79,25 +79,17 @@ class EnginesPage(QWizardPage):
         tree.resizeColumnToContents(0)
         tree.resizeColumnToContents(1)
         layout.addWidget(tree)
+        if not available:
+            note = QLabel("Nothing is usable yet — download a Piper voice on the next page.")
+            note.setWordWrap(True)
+            layout.addWidget(note)
 
         self.setLayout(layout)
-        self._available_count = len(registry.available())
-
-    def isComplete(self) -> bool:
-        return self._available_count > 0
-
-    @property
-    def engines_ready(self) -> bool:
-        return self._available_count > 0
-
-    @engines_ready.setter
-    def engines_ready(self, value: bool) -> None:
-        pass
 
 
 class _VoiceDownloadWorker(QThread):
     progress = Signal(int, int)
-    finished = Signal(Path)
+    downloaded = Signal(Path)
     error = Signal(str)
 
     def __init__(self, meta: PiperVoiceMeta, dest_dir: Path) -> None:
@@ -108,7 +100,7 @@ class _VoiceDownloadWorker(QThread):
     def run(self) -> None:
         try:
             result = download_voice(self.meta, self.dest_dir, on_progress=self._on_progress)
-            self.finished.emit(result)
+            self.downloaded.emit(result)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -159,7 +151,10 @@ class VoiceDownloadPage(QWizardPage):
         for meta in BUILT_IN_CATALOG:
             is_installed = meta.voice_id in installed
             prefix = "✓ Installed — " if is_installed else ""
-            display = f"{prefix}{meta.voice_id} — {meta.language} — {meta.quality} — ~{meta.size_mb_estimate}MB"
+            display = (
+                f"{prefix}{meta.voice_id} — {meta.language} — {meta.quality}"
+                f" — ~{meta.size_mb_estimate}MB"
+            )
 
             item = QListWidgetItem(display)
             item.setData(256, meta)
@@ -170,6 +165,9 @@ class VoiceDownloadPage(QWizardPage):
 
     def isComplete(self) -> bool:
         return self._download_complete
+
+    def is_downloading(self) -> bool:
+        return self._download_worker is not None and self._download_worker.isRunning()
 
     @Slot()
     def _on_skip(self) -> None:
@@ -192,7 +190,7 @@ class VoiceDownloadPage(QWizardPage):
 
         self._download_worker = _VoiceDownloadWorker(meta, get_voices_dir())
         self._download_worker.progress.connect(self._on_progress)
-        self._download_worker.finished.connect(self._on_download_finished)
+        self._download_worker.downloaded.connect(self._on_download_finished)
         self._download_worker.error.connect(self._on_download_error)
         self._download_worker.start()
 
@@ -275,10 +273,11 @@ class AudioTestPage(QWizardPage):
 class FirstRunWizard(QWizard):
     def __init__(
         self,
-        parent: QWizard | None = None,
+        parent: QWidget | None = None,
         registry: EngineRegistry | None = None,
         settings: AppSettings | None = None,
         on_complete: Callable[[], None] | None = None,
+        playback: PlaybackController | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("TTS App — First Run")
@@ -287,6 +286,8 @@ class FirstRunWizard(QWizard):
         self.registry = registry or EngineRegistry()
         self.settings = settings or AppSettings()
         self.on_complete_callback = on_complete or (lambda: None)
+        # Must outlive the click that starts the test sentence.
+        self.playback = playback or PlaybackController()
 
         self.welcome_page = WelcomePage(self)
         self.engines_page = EnginesPage(self.registry, self)
@@ -298,29 +299,21 @@ class FirstRunWizard(QWizard):
         self.addPage(self.voice_download_page)
         self.addPage(self.audio_test_page)
 
-        self.setWizardStyle(QWizard.ModernStyle)
+        self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.resize(QSize(600, 400))
 
     def _create_play_test(self) -> Callable[[], None]:
         def play_test() -> None:
-            from tts_app.audio.playback import PlaybackController
-            from tts_app.engines.base import Voice
+            from PySide6.QtWidgets import QMessageBox
 
-            playback = PlaybackController()
-
-            engine = self.registry.pick_default()
+            self.registry.refresh()  # a voice may have just been downloaded
+            engine = self.registry.pick_default(self.settings.engine_preference)
             if not engine:
-                from PySide6.QtWidgets import QMessageBox
-
-                QMessageBox.critical(
-                    self, "Error", "No TTS engine available for audio test."
-                )
+                QMessageBox.critical(self, "Error", "No TTS engine available for audio test.")
                 return
 
-            voices = engine.list_voices()
+            voices = self.registry.voices(engine)
             if not voices:
-                from PySide6.QtWidgets import QMessageBox
-
                 QMessageBox.critical(
                     self, "Error", f"No voices available for {engine.name} engine."
                 )
@@ -328,12 +321,17 @@ class FirstRunWizard(QWizard):
 
             voice = voices[0]
 
-            def synthesize():
+            def synthesize() -> Iterator[bytes]:
                 return engine.synthesize("Audio is working.", voice)
 
-            playback.play(synthesize)
+            self.playback.play(synthesize)
 
         return play_test
+
+    def reject(self) -> None:
+        if self.voice_download_page.is_downloading():
+            return  # closing now would destroy the running download thread
+        super().reject()
 
     def accept(self) -> None:
         self.settings.first_run_complete = True

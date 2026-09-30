@@ -63,9 +63,9 @@ if (-not $DesktopOnly) {
     New-Shortcut (Join-Path $StartMenuDir 'TTS App.lnk')
 }
 
-# 6. First-run wizard (optional)
+# 6. Launch the app (optional)
 if (-not $NoFirstRun) {
-    Info "Launching first-run wizard..."
+    Info "Launching TTS App..."
     Start-Process -FilePath (Join-Path $Repo '.venv\Scripts\pythonw.exe') `
         -ArgumentList @((Join-Path $Repo 'launcher.py')) `
         -WorkingDirectory $Repo

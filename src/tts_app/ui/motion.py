@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import sys
+from typing import Literal
 
 from PySide6.QtCore import QObject, Signal
 
 from tts_app.config import AppSettings
+
+ReducedMotion = Literal["auto", "on", "off"]
 
 
 class _Policy(QObject):
@@ -22,7 +25,7 @@ class _Policy(QObject):
             return True
         return not _os_prefers_reduced_motion()
 
-    def set_preference(self, value: str) -> None:
+    def set_preference(self, value: ReducedMotion) -> None:
         self._settings.reduced_motion = value
         self.changed.emit(self.should_animate())
 

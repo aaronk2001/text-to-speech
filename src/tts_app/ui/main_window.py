@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import logging
+import threading
+from collections.abc import Iterator
 from pathlib import Path
-from threading import Thread
+from typing import cast
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Slot
-from PySide6.QtGui import QAction, QColor, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal, Slot
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
+    QDialog,
     QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,
@@ -26,23 +30,29 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tts_app.audio.encode import encode_pcm_to_file, format_from_extension
+from tts_app.audio.encode import resolve_output
+from tts_app.audio.export import ExportCancelled, export_speech
 from tts_app.audio.playback import PlaybackController, PlaybackState
+from tts_app.clipboard import read_clipboard_text
 from tts_app.config import AppSettings, save_settings
 from tts_app.engines.base import TTSEngine, Voice
 from tts_app.engines.registry import EngineRegistry
 from tts_app.text.segment import Segment, segment_text
+from tts_app.ui.motion import ReducedMotion, should_animate
 from tts_app.ui.motion import policy as motion_policy
-from tts_app.ui.motion import should_animate
+from tts_app.ui.preferences import PreferencesDialog
+from tts_app.ui.rvc_card_grid import RvcCardGrid
 from tts_app.ui.transport_progress import TransportProgressSlider
 from tts_app.ui.voice_browser import VoiceBrowser
 from tts_app.ui.voice_picker import VoicePicker
 from tts_app.ui.waveform import WaveformWidget
-from tts_app.ui.widgets import ErrorBanner, HamburgerButton
+from tts_app.ui.widgets import ErrorBanner, HamburgerButton, engine_label
 
 logger = logging.getLogger(__name__)
 
-ENGINE_LABELS = {"sapi": "Windows", "piper": "Piper", "supertonic": "Supertonic", "rvc": "RVC"}
+
+def _qapp() -> QApplication:
+    return cast(QApplication, QApplication.instance())
 
 
 def _hairline() -> QFrame:
@@ -58,6 +68,21 @@ def _button(text: str, role: str) -> QPushButton:
 
 
 class MainWindow(QMainWindow):
+    hidden_to_tray = Signal()
+    preferences_changed = Signal()
+
+    # Emitted from the save worker thread; delivered on the UI thread.
+    _save_finished = Signal(str)
+    _save_failed = Signal(str)
+
+    # Created by _add_param() via setattr.
+    _rate_slider: QSlider
+    _pitch_slider: QSlider
+    _volume_slider: QSlider
+    _rate_label: QLabel
+    _pitch_label: QLabel
+    _volume_label: QLabel
+
     def __init__(
         self,
         registry: EngineRegistry,
@@ -77,6 +102,10 @@ class MainWindow(QMainWindow):
         self._current_voice: Voice | None = None
         self._engines_probed = False
         self._engine_buttons: dict[str, QPushButton] = {}
+        self._close_to_tray = False
+        self._quitting = False
+        self._save_thread: threading.Thread | None = None
+        self._save_cancel = threading.Event()
 
         self._setup_ui()
         self._setup_status_bar()
@@ -135,7 +164,12 @@ class MainWindow(QMainWindow):
 
         motion_menu = QMenu("Reduced Motion", menu)
         self._motion_actions: dict[str, QAction] = {}
-        for label, value in (("Follow OS", "auto"), ("Always On", "on"), ("Always Off", "off")):
+        options: tuple[tuple[str, ReducedMotion], ...] = (
+            ("Follow OS", "auto"),
+            ("Always On", "on"),
+            ("Always Off", "off"),
+        )
+        for label, value in options:
             act = QAction(label, self)
             act.setCheckable(True)
             act.triggered.connect(lambda _checked=False, v=value: self._set_reduced_motion(v))
@@ -143,6 +177,10 @@ class MainWindow(QMainWindow):
             self._motion_actions[value] = act
         self._motion_actions[self._settings.reduced_motion].setChecked(True)
         menu.addMenu(motion_menu)
+
+        rvc_action = QAction("RVC voice models…", self)
+        rvc_action.triggered.connect(self._on_rvc_voices)
+        menu.addAction(rvc_action)
 
         prefs = QAction("Preferences…", self)
         prefs.triggered.connect(self._on_preferences)
@@ -155,16 +193,16 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
 
         quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(self.close)
+        quit_action.triggered.connect(self.quit_app)
         menu.addAction(quit_action)
         return menu
 
-    def _set_reduced_motion(self, value: str) -> None:
+    def _set_reduced_motion(self, value: ReducedMotion) -> None:
         p = motion_policy()
         if p is not None:
             p.set_preference(value)
         else:
-            self._settings.reduced_motion = value  # type: ignore[assignment]
+            self._settings.reduced_motion = value
         save_settings(self._settings)
         for v, act in self._motion_actions.items():
             act.setChecked(v == value)
@@ -320,37 +358,38 @@ class MainWindow(QMainWindow):
         self._rewind_btn = _button("−10", "transport")
         self._rewind_btn.setToolTip("Back 10 seconds")
         self._play_btn = _button("Play", "play")
-        self._stop_btn = _button("Stop", "transport")
-        self._stop_btn.setMinimumWidth(56)
         self._forward_btn = _button("+10", "transport")
         self._forward_btn.setToolTip("Forward 10 seconds")
+        self._stop_btn = _button("Stop", "transport")
+        self._stop_btn.setMinimumWidth(56)
         self._save_btn = _button("Save audio", "ghost")
 
-        spacer = QWidget()
-        spacer.setFixedWidth(self._save_btn.sizeHint().width())
-        btn_row.addWidget(spacer)
+        # Balance the Save button so Play sits in the true centre.
+        balance = QWidget()
+        balance.setFixedWidth(
+            self._save_btn.sizeHint().width() + self._stop_btn.minimumWidth() + 12
+        )
+        btn_row.addWidget(balance)
         btn_row.addStretch()
         btn_row.addWidget(self._rewind_btn)
         btn_row.addWidget(self._play_btn)
         btn_row.addWidget(self._forward_btn)
-        btn_row.addSpacing(6)
-        btn_row.addWidget(self._stop_btn)
         btn_row.addStretch()
+        btn_row.addWidget(self._stop_btn)
+        btn_row.addSpacing(6)
         btn_row.addWidget(self._save_btn)
         layout.addSpacing(4)
         layout.addLayout(btn_row)
 
-        # Skip isn't wired up in PlaybackController yet; keep the buttons out of sight.
-        self._rewind_btn.setVisible(False)
-        self._forward_btn.setVisible(False)
-        self._stop_btn.setEnabled(False)
-
-        self._play_btn.clicked.connect(self._on_play_toggle)
+        self._play_btn.clicked.connect(self._on_play)
         self._stop_btn.clicked.connect(self._on_stop)
         self._save_btn.clicked.connect(self._on_save)
         self._rewind_btn.clicked.connect(self._on_rewind)
         self._forward_btn.clicked.connect(self._on_forward)
-        self._progress_slider.sliderMoved.connect(self._on_seek)
+        self._rewind_btn.setEnabled(False)  # enabled while there's audio to seek in
+        self._forward_btn.setEnabled(False)
+        self._stop_btn.setEnabled(False)
+        self._progress_slider.sliderReleased.connect(self._on_seek_released)
 
         return layout
 
@@ -368,8 +407,7 @@ class MainWindow(QMainWindow):
                 w.deleteLater()
 
         for engine in self._registry.available():
-            btn = QPushButton(ENGINE_LABELS.get(engine.name, engine.name.title()))
-            btn.setProperty("role", "enginePill")
+            btn = _button(engine_label(engine.name), "enginePill")
             btn.setCheckable(True)
             btn.clicked.connect(lambda _checked, e=engine: self._select_engine(e))
             self._engine_group.addButton(btn)
@@ -441,14 +479,15 @@ class MainWindow(QMainWindow):
         self._playback.synthesizing.connect(self._on_synthesizing)
         self._playback.segment_changed.connect(self._highlight_segment)
 
+        self._save_finished.connect(self._on_save_finished)
+        self._save_failed.connect(self._on_save_failed)
+
     def _load_settings(self) -> None:
-        engines = self._registry.available()
-        if engines:
-            self._current_engine = engines[0]
-            if self._settings.last_voice_id:
-                result = self._registry.find_voice(self._settings.last_voice_id)
-                if result:
-                    self._current_engine, self._current_voice = result
+        self._current_engine = self._registry.pick_default(self._settings.engine_preference)
+        if self._current_engine is not None and self._settings.last_voice_id:
+            result = self._registry.find_voice(self._settings.last_voice_id)
+            if result:
+                self._current_engine, self._current_voice = result
 
         self._refresh_engine_pills()
         self._repopulate_voices()
@@ -471,7 +510,12 @@ class MainWindow(QMainWindow):
         if not self._current_engine:
             return
 
-        voices = self._current_engine.list_voices()
+        supports_pitch = self._current_engine.supports_pitch
+        self._pitch_slider.setEnabled(supports_pitch)
+        label = engine_label(self._current_engine.name)
+        self._pitch_slider.setToolTip("" if supports_pitch else f"{label} can't change pitch")
+
+        voices = self._registry.voices(self._current_engine)
         languages: dict[str, list[Voice]] = {}
         for voice in voices:
             lang = voice.language or "Unknown"
@@ -510,6 +554,13 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_play(self) -> None:
+        # While audio is out, this button is labelled Pause / Resume.
+        if self._playback.state() in (PlaybackState.PLAYING, PlaybackState.PAUSED):
+            self.toggle_pause()
+            return
+        self._speak_editor_text()
+
+    def _speak_editor_text(self) -> None:
         if not self._current_engine or not self._current_voice:
             return
 
@@ -527,23 +578,30 @@ class MainWindow(QMainWindow):
         pitch = self._settings.pitch
         volume = self._settings.volume
 
-        def synth_segment(seg: Segment):
+        def synth_segment(seg: Segment) -> Iterator[bytes]:
             yield from engine.synthesize(seg.text, voice, rate=rate, pitch=pitch, volume=volume)
 
         self._playback.play_segments(segments, synth_segment)
 
     @Slot()
-    def _on_play_toggle(self) -> None:
-        if self._playback._state in (PlaybackState.PLAYING, PlaybackState.PAUSED):
-            self._on_pause()
-        else:
-            self._on_play()
+    def read_clipboard(self) -> None:
+        """Global hotkey / tray: read the clipboard aloud. Again on the same text stops."""
+        text = read_clipboard_text(_qapp())
+        reading = self._playback.state() != PlaybackState.IDLE
+        if reading and (not text or text == self._text_edit.toPlainText()):
+            self._on_stop()
+            return
+        if not text:
+            self.statusBar().showMessage("Clipboard has no text to read", 4000)
+            return
+        self._text_edit.setPlainText(text)
+        self._speak_editor_text()
 
     @Slot()
-    def _on_pause(self) -> None:
-        if self._playback._state == PlaybackState.PLAYING:
+    def toggle_pause(self) -> None:
+        if self._playback.state() == PlaybackState.PLAYING:
             self._playback.pause()
-        elif self._playback._state == PlaybackState.PAUSED:
+        elif self._playback.state() == PlaybackState.PAUSED:
             self._playback.resume()
 
     @Slot()
@@ -560,7 +618,7 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save Audio",
             "",
@@ -570,26 +628,64 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
 
-        fmt = format_from_extension(Path(file_path).suffix)
-        if not fmt:
-            return
+        dest, fmt = resolve_output(Path(file_path), selected_filter)
+        # The dialog only confirmed overwriting the name as typed, not with an
+        # extension we added.
+        if dest != Path(file_path) and dest.exists():
+            answer = QMessageBox.question(
+                self, "Save Audio", f"{dest.name} already exists. Replace it?"
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        # Snapshot everything the worker needs; the UI may change while it runs.
+        engine = self._current_engine
+        voice = self._current_voice
+        rate = self._settings.rate
+        pitch = self._settings.pitch
+        volume = self._settings.volume
 
-        def save_worker():
+        cancel = threading.Event()
+        self._save_cancel = cancel
+
+        def save_worker() -> None:
             try:
-                synth = self._current_engine.synthesize(
+                export_speech(
+                    engine,
+                    voice,
                     text,
-                    self._current_voice,
-                    rate=self._settings.rate,
-                    pitch=self._settings.pitch,
-                    volume=self._settings.volume,
+                    dest,
+                    fmt,
+                    rate=rate,
+                    pitch=pitch,
+                    volume=volume,
+                    cancel=cancel,
                 )
-                encode_pcm_to_file(synth, Path(file_path), fmt)
+            except ExportCancelled:
+                logger.info("Save of %s cancelled", dest)
             except Exception as e:
                 logger.exception("Failed to save audio")
-                self._playback.error.emit(f"Save failed: {e}")
+                self._save_failed.emit(f"Save failed: {e}")
+            else:
+                self._save_finished.emit(str(dest))
 
-        thread = Thread(target=save_worker, daemon=True)
-        thread.start()
+        self.statusBar().showMessage(f"Saving {dest.name}…")
+        self._save_thread = threading.Thread(target=save_worker, daemon=True)
+        self._save_thread.start()
+
+    def cancel_save(self, timeout: float = 5.0) -> None:
+        """Stop an in-progress save between sentences and wait for it to clean up."""
+        self._save_cancel.set()
+        if self._save_thread is not None:
+            self._save_thread.join(timeout)
+
+    @Slot(str)
+    def _on_save_finished(self, path: str) -> None:
+        self.statusBar().showMessage(f"Saved {path}", 8000)
+
+    @Slot(str)
+    def _on_save_failed(self, message: str) -> None:
+        self.statusBar().clearMessage()
+        self._on_playback_error(message)
 
     @Slot()
     def _on_rewind(self) -> None:
@@ -599,9 +695,10 @@ class MainWindow(QMainWindow):
     def _on_forward(self) -> None:
         self._playback.skip(10000)
 
-    @Slot(int)
-    def _on_seek(self, value: int) -> None:
-        self._playback.seek(value)
+    @Slot()
+    def _on_seek_released(self) -> None:
+        # Seek once on release: each seek reopens the audio device.
+        self._playback.seek(self._progress_slider.value())
 
     @Slot(int, int)
     def _on_position_changed(self, current_ms: int, total_ms: int) -> None:
@@ -621,7 +718,9 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_browse_voices(self) -> None:
         browser = VoiceBrowser(self._registry)
-        if browser.exec() == 1:
+        accepted = browser.exec() == 1
+        self.refresh_engines()  # the browser can download voices
+        if accepted:
             voice = browser.selectedVoice()
             if voice:
                 result = self._registry.find_voice(voice.id)
@@ -635,14 +734,16 @@ class MainWindow(QMainWindow):
         if not self._current_engine or not self._current_voice:
             return
 
-        def synth_iter():
-            yield from self._current_engine.synthesize(
-                self._settings.preview_text,
-                self._current_voice,
-                rate=self._settings.rate,
-                pitch=self._settings.pitch,
-                volume=self._settings.volume,
-            )
+        # Runs on the synthesis thread: capture now, not when the thread gets to it.
+        engine = self._current_engine
+        voice = self._current_voice
+        text = self._settings.preview_text
+        rate = self._settings.rate
+        pitch = self._settings.pitch
+        volume = self._settings.volume
+
+        def synth_iter() -> Iterator[bytes]:
+            yield from engine.synthesize(text, voice, rate=rate, pitch=pitch, volume=volume)
 
         self._playback.play(synth_iter)
 
@@ -657,7 +758,39 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_preferences(self) -> None:
-        QMessageBox.information(self, "Preferences", "Coming soon!")
+        dialog = PreferencesDialog(self._settings, self, rvc_base_voices=self._rvc_base_voices())
+        if dialog.exec() == 1:
+            save_settings(self._settings)
+            self.preferences_changed.emit()
+
+    def _rvc_base_voices(self) -> list[Voice]:
+        if self._registry.get("rvc") is None:
+            return []
+        base = self._registry.get(self._settings.rvc_base_engine)
+        if base is None or base not in self._registry.available():
+            return []
+        return self._registry.voices(base)
+
+    @Slot()
+    def _on_rvc_voices(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("RVC voice models")
+        dialog.resize(760, 520)
+        layout = QVBoxLayout(dialog)
+        note = QLabel(
+            "Experimental: RVC converts Piper speech into another voice. It needs "
+            "torch and rvc-inferpy installed; models (.pth) are imported here."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "bodyMuted")
+        layout.addWidget(note)
+        layout.addWidget(RvcCardGrid())
+        dialog.exec()
+
+        rvc = self._registry.get("rvc")
+        if rvc is not None and hasattr(rvc, "recheck"):
+            rvc.recheck()  # models may have been added or removed
+        self.refresh_engines()
 
     @Slot()
     def _on_about(self) -> None:
@@ -687,8 +820,9 @@ class MainWindow(QMainWindow):
             self._play_btn.setText("Play")
             self._play_btn.setEnabled(True)
             self._stop_btn.setEnabled(False)
-        self._rewind_btn.setEnabled(False)
-        self._forward_btn.setEnabled(False)
+        seekable = ps in (PlaybackState.PLAYING, PlaybackState.PAUSED)
+        self._rewind_btn.setEnabled(seekable)
+        self._forward_btn.setEnabled(seekable)
         self._progress_slider.setEnabled(active)
         self._update_state_indicator(ps)
         self._update_status()
@@ -756,7 +890,7 @@ class MainWindow(QMainWindow):
             return
 
         voice_count = sum(
-            len(e.list_voices()) for e in self._registry.available()
+            len(self._registry.voices(e)) for e in self._registry.available()
         )
         ps = self._playback._state
         if ps == PlaybackState.SYNTHESIZING:
@@ -775,6 +909,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def on_engines_probed(self) -> None:
         self._engines_probed = True
+        self.refresh_engines()
+
+    def refresh_engines(self) -> None:
+        """Re-check engines and voices, e.g. after voices were installed."""
+        self._registry.refresh()
+        available = self._registry.available()
+        if self._current_engine not in available:
+            self._current_engine = self._registry.pick_default(self._settings.engine_preference)
+            self._current_voice = None
+        self._repopulate_voices()
         self._refresh_engine_pills()
 
         if self._settings.last_voice_id and not self._current_voice:
@@ -792,6 +936,34 @@ class MainWindow(QMainWindow):
         self._pitch_label.setText(f"{self._settings.pitch:.2f}x")
         self._volume_label.setText(f"{self._settings.volume:.2f}")
 
-    def closeEvent(self, event) -> None:
+    def show_and_raise(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def set_close_to_tray(self, enabled: bool) -> None:
+        """Closing the window hides it instead (the app keeps running in the tray)."""
+        self._close_to_tray = enabled
+
+    @Slot()
+    def quit_app(self) -> None:
+        self._quitting = True
         save_settings(self._settings)
+        QApplication.quit()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        save_settings(self._settings)
+        # During OS logoff/shutdown a refused close would cancel the session end.
+        if (
+            self._close_to_tray
+            and not self._quitting
+            and not _qapp().isSavingSession()
+        ):
+            event.ignore()
+            self.hide()
+            self.hidden_to_tray.emit()
+            return
         super().closeEvent(event)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -7,10 +8,12 @@ import tempfile
 import wave
 from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
+import numpy as np
 import platformdirs
 
+from tts_app.engines._wav import float_to_pcm16, resample_mono
 from tts_app.engines.base import PCM_SAMPLE_RATE, TTSEngine, Voice
 
 logger = logging.getLogger(__name__)
@@ -28,20 +31,17 @@ def get_rvc_assets_dir() -> Path:
     return Path(os.path.realpath(d))
 
 
-def get_rvc_stage_dir() -> Path:
-    d = Path(platformdirs.user_data_dir("TTSApp", appauthor=False)) / "rvc_stage"
-    (d / "models").mkdir(parents=True, exist_ok=True)
-    return Path(os.path.realpath(d))
-
-
 class RvcEngine(TTSEngine):
     name: ClassVar[str] = "rvc"
+    supports_pitch: ClassVar[bool] = True  # mapped to RVC's semitone shift
 
     def __init__(self, base_engine: TTSEngine | None = None) -> None:
         self._base_engine = base_engine
+        self._base_voice_id: str | None = None
         self._models_dir = get_rvc_models_dir()
         self._torch_status: str = "unknown"
         self._converter = None  # cached RVCConverter (loads HuBERT once)
+        self._loaded_model: Path | None = None  # .pth currently loaded into the converter
 
     def torch_status(self) -> str:
         return self._torch_status
@@ -88,6 +88,20 @@ class RvcEngine(TTSEngine):
     def set_base_engine(self, engine: TTSEngine) -> None:
         self._base_engine = engine
 
+    def set_base_voice(self, voice_id: str | None) -> None:
+        """Voice of the base engine whose speech gets converted; None = its first voice."""
+        self._base_voice_id = voice_id
+
+    def _base_voice(self) -> Voice:
+        assert self._base_engine is not None
+        voices = self._base_engine.list_voices()
+        if not voices:
+            raise RuntimeError("Base engine has no voices available")
+        for v in voices:
+            if v.id == self._base_voice_id:
+                return v
+        return voices[0]
+
     def synthesize(
         self,
         text: str,
@@ -104,58 +118,59 @@ class RvcEngine(TTSEngine):
         if not model_path:
             raise RuntimeError(f"RVC model not found: {model_name}")
 
-        base_voices = self._base_engine.list_voices()
-        if not base_voices:
-            raise RuntimeError("Base engine has no voices available")
-        base_voice = base_voices[0]
-
-        pcm_chunks = list(self._base_engine.synthesize(text, base_voice, rate, 1.0, volume))
-        pcm_data = b"".join(pcm_chunks)
+        base_voice = self._base_voice()
+        pcm_data = b"".join(self._base_engine.synthesize(text, base_voice, rate, 1.0, volume))
         if not pcm_data:
             return
 
-        staging = get_rvc_stage_dir()
-        self._stage_model(model_name, model_path, staging)
+        conv = self._get_converter()
+        if self._loaded_model != model_path:
+            conv.vc.get_vc(str(model_path), _PROTECT, 0.5)
+            self._loaded_model = model_path
 
-        fd, tmp_in_str = tempfile.mkstemp(suffix=".wav", dir=str(staging))
+        fd, tmp_in_str = tempfile.mkstemp(suffix=".wav", dir=str(get_rvc_assets_dir()))
         os.close(fd)
         tmp_in = Path(tmp_in_str)
-        with wave.open(str(tmp_in), "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(PCM_SAMPLE_RATE)
-            wf.writeframes(pcm_data)
-
-        prev_cwd = os.getcwd()
-        out_path: Path | None = None
+        out_path: str | None = None
         try:
-            os.chdir(staging)
-            conv = self._get_converter()
-            f0_change = int(round((pitch - 1.0) * 12))
-            out_str = conv.infer_audio(
-                voice_model=model_name,
-                audio_path=str(tmp_in),
-                f0_change=f0_change,
+            with wave.open(str(tmp_in), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(PCM_SAMPLE_RATE)
+                wf.writeframes(pcm_data)
+
+            # Call the single-file inference step with explicit model/index paths.
+            # RVCConverter.infer_audio() would look the model up under
+            # <cwd>/models/, which needed a process-wide chdir from this thread.
+            info, audio_data, out_path = conv._run_inference(
+                input_audio=str(tmp_in),
+                index_path=str(self._find_index(model_path) or ""),
+                f0_change=int(round((pitch - 1.0) * 12)),
                 f0_method="rmvpe+",
                 index_rate=0.75,
-                protect=0.33,
-                do_formant=False,
+                filter_radius=3,
+                resample_sr=0,
+                rms_mix_rate=0.25,
+                protect=_PROTECT,
                 audio_format="wav",
+                crepe_hop_length=128,
+                do_formant=False,
+                quefrency=0,
+                timbre=1,
+                min_pitch="50",
+                max_pitch="1100",
+                f0_autotune=False,
             )
-            if not out_str or not os.path.isfile(out_str):
-                raise RuntimeError(
-                    "rvc-inferpy returned no audio (conversion failed upstream); "
-                    f"got out_str={out_str!r}"
-                )
-            out_path = Path(out_str)
-            yield from self._yield_pcm(out_path, volume)
+            if not info or info[0] != "Success.":
+                detail = info[0] if info else "no result"
+                raise RuntimeError(f"RVC conversion failed: {detail}")
+            sample_rate, audio = audio_data
+            yield from _to_pcm_chunks(audio, int(sample_rate), volume)
         finally:
-            os.chdir(prev_cwd)
             tmp_in.unlink(missing_ok=True)
-            if out_path is not None:
-                Path(out_path).unlink(missing_ok=True)
+            _discard_output(out_path)
 
-    def _get_converter(self):
+    def _get_converter(self) -> Any:
         if self._converter is not None:
             return self._converter
         import torch
@@ -191,8 +206,8 @@ class RvcEngine(TTSEngine):
         rmvpe = assets / "rmvpe.pt"
         self._download_if_missing(f"{base}/hubert_base.pt", hubert, min_size=180_000_000)
         self._download_if_missing(f"{base}/rmvpe.pt", rmvpe, min_size=120_000_000)
-        os.environ["hubert_model_path"] = str(hubert)
-        os.environ["rmvpe_model_path"] = str(rmvpe)
+        os.environ["hubert_model_path"] = str(hubert)  # noqa: SIM112 (name set by rvc-inferpy)
+        os.environ["rmvpe_model_path"] = str(rmvpe)  # noqa: SIM112
         os.environ.setdefault("fcpe_model_path", str(assets / "fcpe.pt"))
         self._ensure_ffmpeg(assets)
 
@@ -234,66 +249,11 @@ class RvcEngine(TTSEngine):
             raise RuntimeError(f"downloaded {url} too small ({tmp.stat().st_size} bytes)")
         tmp.replace(dest)
 
-    def _stage_model(self, name: str, src: Path, staging: Path) -> None:
-        target_dir = staging / "models" / name
-        target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / f"{name}.pth"
-        if target.exists() and target.stat().st_size == src.stat().st_size:
-            return
-        if target.exists():
-            target.unlink()
-        try:
-            os.link(src, target)
-        except OSError:
-            shutil.copy2(src, target)
-        src_index = src.with_suffix(".index")
-        if not src_index.exists():
-            found = list(src.parent.glob("*.index"))
-            src_index = found[0] if found else None  # type: ignore[assignment]
-        if src_index and Path(src_index).exists():
-            tgt_index = target_dir / Path(src_index).name
-            if not tgt_index.exists():
-                try:
-                    os.link(src_index, tgt_index)
-                except OSError:
-                    shutil.copy2(src_index, tgt_index)
-
-    def _yield_pcm(self, wav_path: Path, volume: float) -> Iterator[bytes]:
-        import numpy as np
-
-        with wave.open(str(wav_path), "rb") as wf:
-            sr = wf.getframerate()
-            nch = wf.getnchannels()
-            sw = wf.getsampwidth()
-            raw = wf.readframes(wf.getnframes())
-
-        if sw == 2:
-            audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-        elif sw == 4:
-            audio = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
-        elif sw == 1:
-            audio = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
-        else:
-            raise RuntimeError(f"Unsupported RVC output sample width: {sw}")
-
-        if nch > 1:
-            audio = audio.reshape(-1, nch).mean(axis=1)
-
-        if sr != PCM_SAMPLE_RATE:
-            import torch
-            import torchaudio
-            t = torch.from_numpy(audio).unsqueeze(0)
-            t = torchaudio.functional.resample(t, sr, PCM_SAMPLE_RATE)
-            audio = t.squeeze(0).numpy()
-
-        peak = float(np.abs(audio).max()) if audio.size else 0.0
-        if peak > 0:
-            audio = audio / peak * 0.95 * max(0.0, min(volume, 1.0))
-        pcm = (audio * 32767.0).clip(-32768, 32767).astype(np.int16).tobytes()
-
-        chunk_size = PCM_SAMPLE_RATE * 2
-        for i in range(0, len(pcm), chunk_size):
-            yield pcm[i:i + chunk_size]
+    def _find_index(self, model_path: Path) -> Path | None:
+        index = model_path.with_suffix(".index")
+        if index.exists():
+            return index
+        return next(iter(sorted(model_path.parent.glob("*.index"))), None)
 
     def _find_model(self, name: str) -> Path | None:
         exact = self._models_dir / f"{name}.pth"
@@ -302,3 +262,33 @@ class RvcEngine(TTSEngine):
         for pth in self._models_dir.glob(f"**/{name}.pth"):
             return pth
         return None
+
+
+_PROTECT = 0.33  # rvc-inferpy's default consonant protection
+
+
+def _to_pcm_chunks(audio: np.ndarray, sample_rate: int, volume: float) -> Iterator[bytes]:
+    audio = np.asarray(audio)
+    if np.issubdtype(audio.dtype, np.integer):
+        audio = audio.astype(np.float32) / float(np.iinfo(audio.dtype).max + 1)
+    audio = audio.astype(np.float32)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    audio = resample_mono(audio, sample_rate, PCM_SAMPLE_RATE)
+    peak = float(np.abs(audio).max()) if audio.size else 0.0
+    if peak > 0:
+        audio = audio / peak * 0.95 * max(0.0, min(volume, 1.0))
+    pcm = float_to_pcm16(audio)
+    chunk_size = PCM_SAMPLE_RATE * 2
+    for i in range(0, len(pcm), chunk_size):
+        yield pcm[i:i + chunk_size]
+
+
+def _discard_output(out_path: str | None) -> None:
+    """rvc-inferpy always also writes its result under <cwd>/output; clean that up."""
+    if not out_path:
+        return
+    out = Path(out_path)
+    out.unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        out.parent.rmdir()  # only succeeds if we left it empty

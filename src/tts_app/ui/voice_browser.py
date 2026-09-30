@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QThread, Qt, Signal, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QButtonGroup,
     QDialog,
@@ -27,6 +27,7 @@ from tts_app.engines.voices import (
     get_voices_dir,
     installed_voice_files,
 )
+from tts_app.ui.widgets import engine_label
 
 logger = logging.getLogger(__name__)
 
@@ -153,19 +154,11 @@ class VoiceBrowser(QDialog):
         self._installed_list.clear()
         engine_for: dict[str, str] = {}
         for engine in self._registry.available():
-            for v in engine.list_voices():
-                engine_for[v.id] = engine.name.upper()
+            for v in self._registry.voices(engine):
+                engine_for[v.id] = engine_label(engine.name)
         for voice in self._registry.all_voices():
             engine_name = engine_for.get(voice.id, "?")
-            quality = (
-                f"q{voice.quality}"
-                if isinstance(voice.quality, int)
-                else (voice.quality or "—")
-            )
-            label = (
-                f"{voice.name}  ·  {engine_name}  ·  "
-                f"{voice.language or '—'}  ·  {quality}"
-            )
+            label = f"{voice.name}    {engine_name}    {voice.language or ''}".rstrip()
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, voice)
             self._installed_list.addItem(item)
@@ -254,6 +247,7 @@ class VoiceBrowser(QDialog):
     @Slot()
     def _on_download_finished(self) -> None:
         self._progress_bar.setVisible(False)
+        self._registry.refresh()  # a new voice can make Piper available
         self._populate_download()
         self._populate_installed()
 
@@ -274,6 +268,8 @@ class VoiceBrowser(QDialog):
             root = self._download_tree.invisibleRootItem()
             for i in range(root.childCount()):
                 row = root.child(i)
+                if row is None:
+                    continue
                 row_text = " ".join(
                     row.text(c) for c in range(row.columnCount())
                 ).lower()

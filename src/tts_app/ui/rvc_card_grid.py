@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+from typing import Any
 
-logger = logging.getLogger(__name__)
-
-from PySide6.QtCore import QRectF, QSize, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QRectF, QSize, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -23,18 +22,20 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListView,
     QProgressBar,
     QPushButton,
     QStyle,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
 
 from tts_app.engines.rvc_engine import get_rvc_models_dir
 from tts_app.ui.rvc_browser import _DownloadModelWorker, _SearchWorker
+
+logger = logging.getLogger(__name__)
 
 ROLE_MODEL_ID = Qt.ItemDataRole.UserRole + 1
 ROLE_AUTHOR = Qt.ItemDataRole.UserRole + 2
@@ -46,10 +47,17 @@ CARD_H = 132
 
 
 class _CardDelegate(QStyledItemDelegate):
-    def sizeHint(self, option, index) -> QSize:
+    def sizeHint(
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> QSize:
         return QSize(CARD_W, CARD_H)
 
-    def paint(self, painter: QPainter, option, index) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -87,14 +95,17 @@ class _CardDelegate(QStyledItemDelegate):
         elided = fm.elidedText(title, Qt.TextElideMode.ElideRight, int(title_rect.width() * 2))
         painter.drawText(
             title_rect,
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop) | int(Qt.TextFlag.TextWordWrap),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            | int(Qt.TextFlag.TextWordWrap),
             elided,
         )
 
         painter.setFont(QFont("Space Grotesk", 9))
         painter.setPen(QColor("#94a3b8"))
         author_rect = QRectF(rect.left() + 14, rect.bottom() - 42, rect.width() - 28, 16)
-        painter.drawText(author_rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop), author)
+        painter.drawText(
+            author_rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop), author
+        )
 
         painter.setFont(QFont("JetBrains Mono", 8))
         painter.setPen(QColor("#cbd5e1"))
@@ -191,7 +202,7 @@ class RvcCardGrid(QWidget):
         self._progress_bar.setVisible(False)
         outer.addWidget(self._progress_bar)
 
-        installed_label = QLabel("INSTALLED")
+        installed_label = QLabel("Installed")
         installed_label.setProperty("role", "sectionHeading")
         outer.addWidget(installed_label)
 
@@ -217,7 +228,7 @@ class RvcCardGrid(QWidget):
         self._search_worker.start()
 
     @Slot(list)
-    def _on_search_results(self, results: list) -> None:
+    def _on_search_results(self, results: list[dict[str, Any]]) -> None:
         self._status_label.setText(f"{len(results)} models")
         self._model.clear()
         for r in results:
@@ -234,7 +245,7 @@ class RvcCardGrid(QWidget):
     def _on_search_error(self, error: str) -> None:
         self._status_label.setText(f"Search failed: {error}")
 
-    def _on_selection_changed(self, *_args) -> None:
+    def _on_selection_changed(self, *_args: object) -> None:
         sel = self._view.selectionModel()
         self._download_btn.setEnabled(bool(sel and sel.selectedIndexes()))
 

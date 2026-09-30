@@ -17,9 +17,9 @@ assets/bin/
 .omc/
 .claude/
 
-# Local scratch output
-*.wav
-tmp_*.png
-launch_out.txt
-prompt.md
-hello
+# Scratch output from manual runs at the repo root
+/*.wav
+/tmp_*.png
+/launch_out.txt
+/prompt.md
+/hello

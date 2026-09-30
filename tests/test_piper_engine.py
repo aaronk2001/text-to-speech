@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,7 +10,16 @@ from tts_app.engines.base import SynthesisError, Voice
 from tts_app.engines.piper import PiperEngine
 
 
-def test_piper_not_available_no_binary():
+def test_piper_not_available_no_binary(tmp_path, monkeypatch):
+    # Installed voices alone aren't enough without a runtime (module or exe).
+    voices = tmp_path / "voices"
+    voices.mkdir()
+    (voices / "en_US-test-medium.onnx").touch()
+    (voices / "en_US-test-medium.onnx.json").write_text("{}")
+    monkeypatch.setattr("tts_app.engines.piper.get_voices_dir", lambda: voices)
+    monkeypatch.setattr("tts_app.engines.piper._try_import_piper", lambda: None)
+    monkeypatch.setattr("tts_app.engines.piper._piper_module_runnable", lambda: False)
+
     engine = PiperEngine(piper_exe=Path("/nonexistent/piper.exe"))
     assert not engine.is_available()
 
@@ -108,7 +116,8 @@ def test_piper_synthesize_success(tmp_path, monkeypatch):
 
         def mock_run(*args, **kwargs):
             import shutil
-            shutil.copy(wav_file, kwargs.get("stdout", "/dev/null") if "stdout" in kwargs else args[0][-2])
+            dest = kwargs.get("stdout", "/dev/null") if "stdout" in kwargs else args[0][-2]
+            shutil.copy(wav_file, dest)
 
             from unittest.mock import MagicMock
             result = MagicMock()
@@ -142,14 +151,15 @@ def test_piper_synthesize_success(tmp_path, monkeypatch):
         )
 
         engine = PiperEngine(piper_exe=fake_exe)
+        # Exercise the piper.exe subprocess path even when piper-tts is installed.
+        engine._inproc = None
+        engine._module_ok = False
         chunks = list(engine.synthesize("hello", voice, rate=1.0))
 
         assert len(chunks) > 0
 
 
 def test_piper_synthesize_rate_conversion():
-    engine = PiperEngine(piper_exe=Path("/nonexistent"))
-
     length_scale = 1.0 / max(2.0, 0.25)
     assert length_scale == 0.5
 
@@ -178,6 +188,9 @@ def test_piper_synthesize_invalid_voice(tmp_path, monkeypatch):
 
 def test_piper_install_hint_no_binary(tmp_path):
     engine = PiperEngine(piper_exe=Path("/nonexistent/piper.exe"))
+    # No runtime at all: neither the piper-tts module nor a binary.
+    engine._inproc = None
+    engine._module_ok = False
     hint = engine.install_hint()
 
     assert hint is not None

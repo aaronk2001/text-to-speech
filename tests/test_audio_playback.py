@@ -1,21 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterator
 
 import pytest
 
 from tts_app.audio.playback import PlaybackController, PlaybackState
 
-try:
-    from PySide6.QtMultimedia import QMediaDevices
-except ImportError:
-    QMediaDevices = None
-
-
-pytestmark = pytest.mark.skipif(
-    QMediaDevices is None or QMediaDevices.defaultAudioOutput().isNull(),
-    reason="audio device not available",
-)
+# A real QAudioSink crashes under the offscreen platform on machines that have a
+# sound card, and is skipped on CI runners that don't; use the fake sink everywhere.
+pytestmark = pytest.mark.usefixtures("fake_audio")
 
 
 def tiny_synthesizer() -> Iterator[bytes]:
@@ -32,9 +26,10 @@ def test_playback_controller_creation(qtbot) -> None:
 def test_playback_state_enum_values() -> None:
     """Test PlaybackState enum values."""
     assert PlaybackState.IDLE == 0
-    assert PlaybackState.PLAYING == 1
-    assert PlaybackState.PAUSED == 2
-    assert PlaybackState.STOPPED == 3
+    assert PlaybackState.SYNTHESIZING == 1
+    assert PlaybackState.PLAYING == 2
+    assert PlaybackState.PAUSED == 3
+    assert PlaybackState.STOPPED == 4
 
 
 def test_playback_controller_play_and_finish(qtbot) -> None:
@@ -45,10 +40,8 @@ def test_playback_controller_play_and_finish(qtbot) -> None:
     controller.play(tiny_synthesizer)
 
     # Wait for the signal with a reasonable timeout
-    try:
+    with contextlib.suppress(Exception):  # signal may already have been emitted
         finished_signal.wait()
-    except Exception:
-        pass  # Signal may have already been emitted
 
 
 def test_playback_controller_stop_transitions_to_idle(qtbot) -> None:

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 import pytest
 
 pytest.importorskip("PySide6")
 
-from tts_app.hotkey.global_hotkey import GlobalHotkey  # noqa: E402
+from PySide6.QtCore import QObject, QThread, Slot  # noqa: E402
+
+from tts_app.hotkey.global_hotkey import GlobalHotkey, format_hotkey  # noqa: E402
 
 
 class FakeKeyboard:
@@ -89,3 +92,46 @@ def test_methods_noop_when_unavailable(qapp: Any) -> None:
     h.stop()
     h.change_binding("ctrl+alt+r")
     assert h.is_available() is False
+
+
+def test_format_hotkey() -> None:
+    assert format_hotkey("ctrl+alt+s") == "Ctrl+Alt+S"
+    assert format_hotkey("Ctrl + Shift + F1") == "Ctrl+Shift+F1"
+
+
+def test_is_running_tracks_start_and_stop(qapp: Any) -> None:
+    h = GlobalHotkey("ctrl+alt+s", keyboard_module=FakeKeyboard())
+    assert not h.is_running()
+    h.start()
+    assert h.is_running()
+    h.stop()
+    assert not h.is_running()
+
+
+def test_trigger_from_hook_thread_is_delivered_on_ui_thread(qtbot: Any) -> None:
+    # `keyboard` calls back on its own listener thread; the slot must still run
+    # on the UI thread (it touches the clipboard and widgets).
+    kb = FakeKeyboard()
+    h = GlobalHotkey("ctrl+alt+s", keyboard_module=kb)
+    h.start()
+    receiver = _Receiver()
+    h.triggered.connect(receiver.on_triggered)
+
+    hook_callback = kb.added[0][1]
+    with qtbot.waitSignal(h.triggered, timeout=2000):
+        t = threading.Thread(target=hook_callback)
+        t.start()
+    t.join()
+    qtbot.waitUntil(lambda: receiver.threads != [])
+
+    assert receiver.threads == [QThread.currentThread()]
+
+
+class _Receiver(QObject):
+    def __init__(self) -> None:
+        super().__init__()
+        self.threads: list[QThread] = []
+
+    @Slot()
+    def on_triggered(self) -> None:
+        self.threads.append(QThread.currentThread())

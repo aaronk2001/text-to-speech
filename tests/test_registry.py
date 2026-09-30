@@ -98,3 +98,51 @@ def test_pick_default_none_when_nothing_available() -> None:
     a = _StubEngine("piper", False, [])
     reg = EngineRegistry([a])
     assert reg.pick_default() is None
+
+
+class _CountingEngine(_StubEngine):
+    def __init__(self, name: str, available: bool, voices: list[Voice]) -> None:
+        super().__init__(name, available, voices)
+        self.checks = 0
+        self.listings = 0
+
+    def is_available(self) -> bool:
+        self.checks += 1
+        return self._available
+
+    def list_voices(self) -> list[Voice]:
+        self.listings += 1
+        return list(self._voices)
+
+
+def test_availability_and_voices_are_cached_until_refresh() -> None:
+    a = _CountingEngine("a", True, [_v("a")])
+    reg = EngineRegistry([a])
+    for _ in range(3):
+        reg.available()
+        reg.voices(a)
+        reg.find_voice("a:v1")
+        reg.pick_default(("a",))
+    assert (a.checks, a.listings) == (1, 1)
+
+    a._available = False
+    reg.refresh()
+    assert reg.available() == []
+    assert a.checks == 2
+
+
+def test_engine_that_raises_is_treated_as_unavailable() -> None:
+    class _Broken(_StubEngine):
+        def is_available(self) -> bool:
+            raise OSError("COM exploded")
+
+    ok = _StubEngine("ok", True, [_v("ok")])
+    reg = EngineRegistry([_Broken("broken", True, []), ok])
+    assert reg.available() == [ok]
+
+
+def test_fallback_chain_ignores_duplicate_preferences() -> None:
+    a = _StubEngine("a", True, [_v("a")])
+    b = _StubEngine("b", True, [_v("b")])
+    reg = EngineRegistry([a, b])
+    assert [e.name for e in reg.fallback_chain(("b", "b", "a"))] == ["b", "a"]

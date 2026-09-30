@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
 from tts_app.audio.playback import PlaybackState
+from tts_app.hotkey.global_hotkey import format_hotkey
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,13 @@ class TrayIcon(QSystemTrayIcon):
     def __init__(
         self,
         parent: QWidget | None,
-        icon_path: Path,
+        icon: QIcon | Path,
         on_show: Callable[[], None],
         on_hide: Callable[[], None],
         on_read_clipboard: Callable[[], None],
         on_pause_resume: Callable[[], None],
         on_quit: Callable[[], None],
+        hotkey: str | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -37,16 +39,17 @@ class TrayIcon(QSystemTrayIcon):
         self._on_pause_resume = on_pause_resume
         self._on_quit = on_quit
 
-        self.setIcon(QIcon(str(icon_path)))
+        self.setIcon(icon if isinstance(icon, QIcon) else QIcon(str(icon)))
+        self.setToolTip("TTS")
 
         menu = QMenu(parent)
 
-        self._toggle_action = menu.addAction("Show / Hide")
+        self._toggle_action = menu.addAction("Show window")
         self._toggle_action.triggered.connect(self._on_toggle)
 
-        menu.addAction("Read clipboard now (Ctrl+Alt+S)").triggered.connect(
-            on_read_clipboard
-        )
+        self._read_action = menu.addAction("")
+        self._read_action.triggered.connect(on_read_clipboard)
+        self.set_hotkey(hotkey)
 
         self._pause_action = menu.addAction("Pause")
         self._pause_action.triggered.connect(on_pause_resume)
@@ -56,6 +59,12 @@ class TrayIcon(QSystemTrayIcon):
 
         self.setContextMenu(menu)
         self.activated.connect(self._on_activated)
+
+    def set_hotkey(self, hotkey: str | None) -> None:
+        label = "Read clipboard now"
+        if hotkey:
+            label += f" ({format_hotkey(hotkey)})"
+        self._read_action.setText(label)
 
     def _on_toggle(self) -> None:
         self._on_show()

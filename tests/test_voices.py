@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
+import requests
 
-from tts_app.engines.voices import BUILT_IN_CATALOG, PiperVoiceMeta, download_voice, installed_voice_files
+from tts_app.engines.voices import (
+    BUILT_IN_CATALOG,
+    PiperVoiceMeta,
+    download_voice,
+    installed_voice_files,
+)
 
 
 def test_built_in_catalog_not_empty():
@@ -45,6 +50,7 @@ def test_download_voice_success(tmp_path, monkeypatch):
         download_url_onnx="https://example.com/test.onnx",
         download_url_json="https://example.com/test.onnx.json",
         size_mb_estimate=60,
+        size_mb=60.0,
     )
 
     mock_resp = MagicMock()
@@ -53,7 +59,7 @@ def test_download_voice_success(tmp_path, monkeypatch):
     mock_resp.raise_for_status.return_value = None
 
     mock_json_resp = MagicMock()
-    mock_json_resp.text = '{"test": "json"}'
+    mock_json_resp.content = b'{"test": "json"}'
     mock_json_resp.raise_for_status.return_value = None
 
     def mock_get(url, **kwargs):
@@ -86,6 +92,7 @@ def test_download_voice_disk_space_check(tmp_path, monkeypatch):
         download_url_onnx="https://example.com/test.onnx",
         download_url_json="https://example.com/test.onnx.json",
         size_mb_estimate=60,
+        size_mb=60.0,
     )
 
     monkeypatch.setattr(
@@ -107,12 +114,13 @@ def test_download_voice_http_error(tmp_path, monkeypatch):
         download_url_onnx="https://example.com/test.onnx",
         download_url_json="https://example.com/test.onnx.json",
         size_mb_estimate=60,
+        size_mb=60.0,
     )
 
     mock_resp = MagicMock()
-    mock_resp.raise_for_status.side_effect = Exception("HTTP 404")
+    mock_resp.raise_for_status.side_effect = requests.HTTPError("HTTP 404")
 
     monkeypatch.setattr("tts_app.engines.voices.requests.get", lambda *a, **k: mock_resp)
 
-    with pytest.raises(Exception):
+    with pytest.raises(requests.HTTPError):
         download_voice(meta, tmp_path)

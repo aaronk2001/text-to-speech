@@ -20,10 +20,7 @@ def _import_pyttsx3() -> Any | None:
 
 def _lcid_to_lang(raw: object) -> str:
     """Best-effort SAPI language tag → 'en_US' style."""
-    if isinstance(raw, list) and raw:
-        s = raw[0]
-    else:
-        s = raw
+    s = raw[0] if isinstance(raw, list) and raw else raw
     if isinstance(s, bytes):
         try:
             s = s.decode("utf-8", errors="replace")

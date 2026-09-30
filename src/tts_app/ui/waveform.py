@@ -9,8 +9,8 @@ from __future__ import annotations
 import struct
 from collections import deque
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 BARS = 48
@@ -48,7 +48,7 @@ class WaveformWidget(QWidget):
         for i in range(0, n, stride):
             self._samples.append(arr[i])
 
-    def paintEvent(self, _event) -> None:
+    def paintEvent(self, _event: QPaintEvent) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect()
