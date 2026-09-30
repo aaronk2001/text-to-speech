@@ -122,12 +122,12 @@ class HamburgerButton(QPushButton):
         super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor("#cbd5e1") if not self.underMouse() else QColor("#f8fafc")
+        color = QColor("#8a8a8a") if not self.underMouse() else QColor("#ededed")
         pen = QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
         cx, cy = self.width() / 2, self.height() / 2
-        for dy in (-5, 0, 5):
-            p.drawLine(QPointF(cx - 7, cy + dy), QPointF(cx + 7, cy + dy))
+        for dy in (-4, 0, 4):
+            p.drawLine(QPointF(cx - 6, cy + dy), QPointF(cx + 6, cy + dy))
 
 
 class ErrorBanner(QWidget):
@@ -143,12 +143,12 @@ class ErrorBanner(QWidget):
         row.setSpacing(10)
 
         self._icon = QLabel("⚠")
-        self._icon.setStyleSheet("color: #ef4444; font-size: 14px; font-weight: 600;")
+        self._icon.setStyleSheet("color: #e5736b; font-size: 14px;")
         self._icon.setFixedWidth(18)
 
         self._label = QLabel("")
         self._label.setWordWrap(True)
-        self._label.setStyleSheet("color: #fecaca; font-size: 12px;")
+        self._label.setStyleSheet("color: #e8c4c0; font-size: 13px;")
 
         self._dismiss = QPushButton("✕")
         self._dismiss.setProperty("role", "icon")
@@ -162,8 +162,8 @@ class ErrorBanner(QWidget):
 
         self.setLayout(row)
         self.setStyleSheet(
-            "ErrorBanner { background-color: rgba(239,68,68,0.10);"
-            " border: 1px solid rgba(239,68,68,0.35); border-radius: 12px; }"
+            "ErrorBanner { background-color: rgba(229,115,107,0.08);"
+            " border: none; border-radius: 8px; }"
         )
 
     def show_error(self, message: str) -> None:

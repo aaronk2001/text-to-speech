@@ -5,13 +5,13 @@ from pathlib import Path
 from threading import Thread
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Slot
-from PySide6.QtGui import QAction, QColor, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QAction, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QComboBox,
     QFileDialog,
     QFrame,
     QGraphicsOpacityEffect,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -32,31 +32,29 @@ from tts_app.config import AppSettings, save_settings
 from tts_app.engines.base import TTSEngine, Voice
 from tts_app.engines.registry import EngineRegistry
 from tts_app.text.segment import Segment, segment_text
-from tts_app.ui.effects import HoverGlow, OpacityPulse
 from tts_app.ui.motion import policy as motion_policy
 from tts_app.ui.motion import should_animate
 from tts_app.ui.transport_progress import TransportProgressSlider
 from tts_app.ui.voice_browser import VoiceBrowser
 from tts_app.ui.voice_picker import VoicePicker
 from tts_app.ui.waveform import WaveformWidget
-from tts_app.ui.widgets import ErrorBanner, HamburgerButton, StatusDot, Wordmark
+from tts_app.ui.widgets import ErrorBanner, HamburgerButton
 
 logger = logging.getLogger(__name__)
 
-
-def _section_label(text: str) -> QLabel:
-    label = QLabel(text.upper())
-    label.setProperty("role", "sectionHeading")
-    return label
+ENGINE_LABELS = {"sapi": "Windows", "piper": "Piper", "supertonic": "Supertonic", "rvc": "RVC"}
 
 
-def _glass_card(content: QVBoxLayout) -> QFrame:
-    card = QFrame()
-    card.setProperty("role", "glassCard")
-    content.setContentsMargins(20, 18, 20, 18)
-    content.setSpacing(12)
-    card.setLayout(content)
-    return card
+def _hairline() -> QFrame:
+    line = QFrame()
+    line.setProperty("role", "hairline")
+    return line
+
+
+def _button(text: str, role: str) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setProperty("role", role)
+    return btn
 
 
 class MainWindow(QMainWindow):
@@ -72,7 +70,8 @@ class MainWindow(QMainWindow):
         self._settings = settings
 
         self.setWindowTitle("TTS")
-        self.setMinimumSize(1000, 820)
+        self.setMinimumSize(760, 640)
+        self.resize(920, 760)
 
         self._current_engine: TTSEngine | None = None
         self._current_voice: Voice | None = None
@@ -83,60 +82,44 @@ class MainWindow(QMainWindow):
         self._setup_status_bar()
         self._connect_signals()
         self._load_settings()
-        self._install_effects()
 
     def _setup_ui(self) -> None:
         central = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(16)
+        layout.setContentsMargins(32, 20, 32, 12)
+        layout.setSpacing(0)
 
-        layout.addWidget(self._create_topbar())
+        layout.addLayout(self._create_topbar())
+        layout.addSpacing(12)
         self._error_banner = ErrorBanner()
         layout.addWidget(self._error_banner)
-        layout.addWidget(self._create_text_card(), stretch=1)
-
-        bottom_row = QHBoxLayout()
-        bottom_row.setContentsMargins(0, 0, 0, 0)
-        bottom_row.setSpacing(16)
-        self._voice_card = self._create_voice_card()
-        self._voice_card.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
-        )
-        self._transport_card = self._create_transport_card()
-        self._transport_card.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
-        )
-        bottom_row.addWidget(self._voice_card, stretch=1)
-        bottom_row.addWidget(self._transport_card, stretch=1)
-        bottom_container = QWidget()
-        bottom_container.setLayout(bottom_row)
-        layout.addWidget(bottom_container, stretch=1)
+        layout.addLayout(self._create_text_section(), stretch=1)
+        layout.addSpacing(16)
+        layout.addWidget(_hairline())
+        layout.addSpacing(18)
+        layout.addWidget(self._create_voice_section())
+        layout.addSpacing(22)
+        layout.addLayout(self._create_transport_section())
 
         central.setLayout(layout)
         self.setCentralWidget(central)
 
-    def _create_topbar(self) -> QFrame:
-        bar = QFrame()
-        bar.setObjectName("topBar")
-        bar.setFixedHeight(56)
-
+    def _create_topbar(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setContentsMargins(24, 0, 24, 0)
-        row.setSpacing(14)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
 
-        wordmark = Wordmark("TTS")
-
-        self._status_dot = StatusDot()
-        self._dot_pulse = OpacityPulse(self._status_dot, period_ms=1400, floor=0.45)
+        wordmark = QLabel("TTS")
+        wordmark.setProperty("role", "wordmark")
+        self._state_label = QLabel("")
+        self._state_label.setProperty("role", "status")
 
         row.addWidget(wordmark)
-        row.addWidget(self._status_dot)
+        row.addSpacing(10)
+        row.addWidget(self._state_label)
         row.addStretch()
 
-        self._add_voice_btn = QPushButton("+ Add voice")
-        self._add_voice_btn.setProperty("role", "primary")
-        self._add_voice_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._add_voice_btn = _button("Get voices", "ghost")
         self._add_voice_btn.clicked.connect(self._on_browse_voices)
 
         self._settings_btn = HamburgerButton()
@@ -145,9 +128,7 @@ class MainWindow(QMainWindow):
 
         row.addWidget(self._add_voice_btn)
         row.addWidget(self._settings_btn)
-
-        bar.setLayout(row)
-        return bar
+        return row
 
     def _build_settings_menu(self) -> QMenu:
         menu = QMenu(self)
@@ -188,194 +169,190 @@ class MainWindow(QMainWindow):
         for v, act in self._motion_actions.items():
             act.setChecked(v == value)
 
-    def _create_text_card(self) -> QFrame:
+    def _create_text_section(self) -> QVBoxLayout:
         layout = QVBoxLayout()
-        layout.addWidget(_section_label("Text"))
-
-        button_row = QHBoxLayout()
-        button_row.setSpacing(8)
-        open_btn = QPushButton("Open File…")
-        open_btn.setProperty("role", "ghost")
-        clear_btn = QPushButton("Clear")
-        clear_btn.setProperty("role", "ghost")
-        open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        button_row.addWidget(open_btn)
-        button_row.addWidget(clear_btn)
-        button_row.addStretch()
-        layout.addLayout(button_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
         self._text_edit = QPlainTextEdit()
-        self._text_edit.setPlaceholderText("Paste text or open a file…")
+        self._text_edit.setPlaceholderText("Paste something to read aloud, or open a text file.")
+        self._text_edit.setFrameShape(QFrame.Shape.NoFrame)
+        self._text_edit.document().setDocumentMargin(0)
         self._text_edit.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         layout.addWidget(self._text_edit, stretch=1)
 
+        actions = QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(2)
+        open_btn = _button("Open file", "ghost")
+        clear_btn = _button("Clear", "ghost")
+        actions.addStretch()
+        actions.addWidget(open_btn)
+        actions.addWidget(clear_btn)
+        layout.addLayout(actions)
+
         open_btn.clicked.connect(self._on_open_file)
         clear_btn.clicked.connect(self._text_edit.clear)
 
-        return _glass_card(layout)
+        return layout
 
-    def _create_voice_card(self) -> QFrame:
+    def _create_voice_section(self) -> QWidget:
+        section = QWidget()
         layout = QVBoxLayout()
-        layout.addWidget(_section_label("Voice"))
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
+
+        voice_row = QHBoxLayout()
+        voice_row.setContentsMargins(0, 0, 0, 0)
+        voice_row.setSpacing(4)
 
         self._engine_group = QButtonGroup(self)
         self._engine_group.setExclusive(True)
-        engine_pill_container = QWidget()
-        engine_pill_container.setFixedHeight(34)
         self._engine_pill_row = QHBoxLayout()
         self._engine_pill_row.setContentsMargins(0, 0, 0, 0)
-        self._engine_pill_row.setSpacing(8)
-        self._engine_pill_row.addStretch()
-        engine_pill_container.setLayout(self._engine_pill_row)
-        layout.addWidget(engine_pill_container)
+        self._engine_pill_row.setSpacing(2)
+        voice_row.addLayout(self._engine_pill_row)
 
-        voice_row = QHBoxLayout()
-        voice_row.setSpacing(8)
+        voice_row.addSpacing(12)
         self._voice_picker = VoicePicker()
-        self._voice_picker.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
-        preview_btn = QPushButton("▶  Preview")
-        preview_btn.setProperty("role", "ghost")
-        preview_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        preview_btn.clicked.connect(self._on_preview)
         voice_row.addWidget(self._voice_picker, stretch=1)
+
+        preview_btn = _button("Preview", "ghost")
+        preview_btn.clicked.connect(self._on_preview)
         voice_row.addWidget(preview_btn)
         layout.addLayout(voice_row)
 
-        layout.addSpacing(4)
-        layout.addWidget(self._param_row("Rate", 25, 300, 100, "rate"))
-        layout.addWidget(self._param_row("Pitch", 50, 200, 100, "pitch"))
-        layout.addWidget(self._param_row("Volume", 0, 100, 100, "volume"))
+        params = QGridLayout()
+        params.setContentsMargins(0, 0, 0, 0)
+        params.setHorizontalSpacing(32)
+        params.setVerticalSpacing(6)
+        for col, (name, lo, hi, attr) in enumerate(
+            (("Speed", 25, 300, "rate"), ("Pitch", 50, 200, "pitch"), ("Volume", 0, 100, "volume"))
+        ):
+            self._add_param(params, col, name, lo, hi, 100, attr)
+            params.setColumnStretch(col, 1)
+        layout.addLayout(params)
 
-        card = _glass_card(layout)
-        card.setMinimumHeight(260)
-        self._voice_card_opacity = QGraphicsOpacityEffect(card)
+        section.setLayout(layout)
+        self._voice_card_opacity = QGraphicsOpacityEffect(section)
         self._voice_card_opacity.setOpacity(1.0)
-        card.setGraphicsEffect(self._voice_card_opacity)
+        section.setGraphicsEffect(self._voice_card_opacity)
         self._engine_xfade_anim: QPropertyAnimation | None = None
-        return card
+        return section
 
-    def _param_row(
+    def _add_param(
         self,
+        grid: QGridLayout,
+        col: int,
         name: str,
         minimum: int,
         maximum: int,
         initial: int,
         attr: str,
-    ) -> QWidget:
-        container = QWidget()
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(12)
+    ) -> None:
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
 
         label = QLabel(name)
         label.setProperty("role", "bodyMuted")
-        label.setMinimumWidth(60)
+
+        value = QLabel()
+        value.setProperty("role", "paramValue")
+
+        reset = _button("↺", "paramReset")
+        reset.setToolTip("Reset")
+        reset.setFixedSize(18, 18)
+        size_policy = reset.sizePolicy()
+        size_policy.setRetainSizeWhenHidden(True)
+        reset.setSizePolicy(size_policy)
+        reset.setVisible(False)
+
+        header.addWidget(label)
+        header.addStretch()
+        header.addWidget(reset)
+        header.addWidget(value)
 
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setMinimum(minimum)
         slider.setMaximum(maximum)
         slider.setValue(initial)
 
-        value = QLabel(
-            f"{initial / 100:.2f}x" if attr != "volume" else f"{initial / 100:.2f}"
-        )
-        value.setProperty("role", "paramValue")
-        value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
-        reset = QPushButton("↺")
-        reset.setProperty("role", "paramReset")
-        reset.setCursor(Qt.CursorShape.PointingHandCursor)
-        reset.setToolTip("Reset to default")
-        reset.setVisible(False)
-        reset.setFixedSize(22, 22)
         reset.clicked.connect(lambda _checked=False, s=slider, d=initial: s.setValue(d))
+        slider.valueChanged.connect(lambda val: reset.setVisible(val != initial))
 
-        def _on_value_changed(val: int) -> None:
-            reset.setVisible(val != initial)
-
-        slider.valueChanged.connect(_on_value_changed)
-
-        row.addWidget(label)
-        row.addWidget(slider, stretch=1)
-        row.addWidget(value)
-        row.addWidget(reset)
+        grid.addLayout(header, 0, col)
+        grid.addWidget(slider, 1, col)
 
         setattr(self, f"_{attr}_slider", slider)
         setattr(self, f"_{attr}_label", value)
 
-        container.setLayout(row)
-        return container
-
-    def _create_transport_card(self) -> QFrame:
+    def _create_transport_section(self) -> QVBoxLayout:
         layout = QVBoxLayout()
-        layout.addWidget(_section_label("Transport"))
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        self._rewind_btn = QPushButton("⏪  10s")
-        self._play_btn = QPushButton("▶  Play")
-        self._pause_btn = QPushButton("❚❚")
-        self._stop_btn = QPushButton("■")
-        self._forward_btn = QPushButton("10s  ⏩")
-        self._save_btn = QPushButton("Save audio…")
-
-        for b in (self._rewind_btn, self._pause_btn, self._stop_btn, self._forward_btn):
-            b.setProperty("role", "transport")
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._play_btn.setProperty("role", "play")
-        self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._save_btn.setProperty("role", "ghost")
-        self._save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        btn_row.addWidget(self._rewind_btn)
-        btn_row.addWidget(self._play_btn)
-        btn_row.addWidget(self._pause_btn)
-        btn_row.addWidget(self._stop_btn)
-        btn_row.addWidget(self._forward_btn)
-        btn_row.addStretch()
-        btn_row.addWidget(self._save_btn)
-
-        layout.addLayout(btn_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
 
         self._waveform = WaveformWidget()
         layout.addWidget(self._waveform)
 
         progress_row = QHBoxLayout()
-        progress_row.setSpacing(10)
-
+        progress_row.setSpacing(12)
         self._time_elapsed_label = QLabel("0:00")
         self._time_elapsed_label.setProperty("role", "timecode")
         self._time_total_label = QLabel("0:00")
         self._time_total_label.setProperty("role", "timecode")
-
         self._progress_slider = TransportProgressSlider()
         self._progress_slider.setMinimum(0)
         self._progress_slider.setMaximum(0)
         self._progress_slider.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-
         progress_row.addWidget(self._time_elapsed_label)
         progress_row.addWidget(self._progress_slider, stretch=1)
         progress_row.addWidget(self._time_total_label)
-
         layout.addLayout(progress_row)
 
-        self._play_btn.clicked.connect(self._on_play)
-        self._pause_btn.clicked.connect(self._on_pause)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+
+        self._rewind_btn = _button("−10", "transport")
+        self._rewind_btn.setToolTip("Back 10 seconds")
+        self._play_btn = _button("Play", "play")
+        self._stop_btn = _button("Stop", "transport")
+        self._stop_btn.setMinimumWidth(56)
+        self._forward_btn = _button("+10", "transport")
+        self._forward_btn.setToolTip("Forward 10 seconds")
+        self._save_btn = _button("Save audio", "ghost")
+
+        spacer = QWidget()
+        spacer.setFixedWidth(self._save_btn.sizeHint().width())
+        btn_row.addWidget(spacer)
+        btn_row.addStretch()
+        btn_row.addWidget(self._rewind_btn)
+        btn_row.addWidget(self._play_btn)
+        btn_row.addWidget(self._forward_btn)
+        btn_row.addSpacing(6)
+        btn_row.addWidget(self._stop_btn)
+        btn_row.addStretch()
+        btn_row.addWidget(self._save_btn)
+        layout.addSpacing(4)
+        layout.addLayout(btn_row)
+
+        # Skip isn't wired up in PlaybackController yet; keep the buttons out of sight.
+        self._rewind_btn.setVisible(False)
+        self._forward_btn.setVisible(False)
+        self._stop_btn.setEnabled(False)
+
+        self._play_btn.clicked.connect(self._on_play_toggle)
         self._stop_btn.clicked.connect(self._on_stop)
         self._save_btn.clicked.connect(self._on_save)
         self._rewind_btn.clicked.connect(self._on_rewind)
         self._forward_btn.clicked.connect(self._on_forward)
         self._progress_slider.sliderMoved.connect(self._on_seek)
 
-        return _glass_card(layout)
+        return layout
 
     def _refresh_engine_pills(self) -> None:
         for btn in list(self._engine_buttons.values()):
@@ -391,16 +368,13 @@ class MainWindow(QMainWindow):
                 w.deleteLater()
 
         for engine in self._registry.available():
-            btn = QPushButton(engine.name.upper())
+            btn = QPushButton(ENGINE_LABELS.get(engine.name, engine.name.title()))
             btn.setProperty("role", "enginePill")
             btn.setCheckable(True)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda _checked, e=engine: self._select_engine(e))
             self._engine_group.addButton(btn)
             self._engine_buttons[engine.name] = btn
             self._engine_pill_row.addWidget(btn)
-
-        self._engine_pill_row.addStretch()
 
         if self._current_engine and self._current_engine.name in self._engine_buttons:
             self._engine_buttons[self._current_engine.name].setChecked(True)
@@ -448,6 +422,7 @@ class MainWindow(QMainWindow):
 
     def _setup_status_bar(self) -> None:
         self._status_label = QLabel()
+        self.statusBar().setSizeGripEnabled(False)
         self.statusBar().addWidget(self._status_label)
         self._update_status()
 
@@ -465,10 +440,6 @@ class MainWindow(QMainWindow):
         self._playback.audio_chunk.connect(self._waveform.push_pcm)
         self._playback.synthesizing.connect(self._on_synthesizing)
         self._playback.segment_changed.connect(self._highlight_segment)
-
-    def _install_effects(self) -> None:
-        HoverGlow(self._add_voice_btn, color="#3b82f6", max_radius=24)
-        HoverGlow(self._play_btn, color="#3b82f6", max_radius=28)
 
     def _load_settings(self) -> None:
         engines = self._registry.available()
@@ -560,6 +531,13 @@ class MainWindow(QMainWindow):
             yield from engine.synthesize(seg.text, voice, rate=rate, pitch=pitch, volume=volume)
 
         self._playback.play_segments(segments, synth_segment)
+
+    @Slot()
+    def _on_play_toggle(self) -> None:
+        if self._playback._state in (PlaybackState.PLAYING, PlaybackState.PAUSED):
+            self._on_pause()
+        else:
+            self._on_play()
 
     @Slot()
     def _on_pause(self) -> None:
@@ -686,7 +664,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "About TTS",
-            "TTS · NEXUS Dark\nA premium text-to-speech application.",
+            "TTS\nLocal text-to-speech. No cloud, no accounts.",
         )
 
     @Slot(int)
@@ -694,48 +672,40 @@ class MainWindow(QMainWindow):
         ps = PlaybackState(state)
         active = ps in (PlaybackState.SYNTHESIZING, PlaybackState.PLAYING, PlaybackState.PAUSED)
         if ps == PlaybackState.SYNTHESIZING:
-            self._play_btn.setText("Synthesizing…")
+            self._play_btn.setText("Preparing…")
             self._play_btn.setEnabled(False)
-            self._pause_btn.setEnabled(False)
             self._stop_btn.setEnabled(True)
         elif ps == PlaybackState.PLAYING:
-            self._play_btn.setText("❚❚  Pause")
+            self._play_btn.setText("Pause")
             self._play_btn.setEnabled(True)
-            self._pause_btn.setEnabled(True)
             self._stop_btn.setEnabled(True)
         elif ps == PlaybackState.PAUSED:
-            self._play_btn.setText("▶  Resume")
+            self._play_btn.setText("Resume")
             self._play_btn.setEnabled(True)
-            self._pause_btn.setEnabled(True)
             self._stop_btn.setEnabled(True)
         else:
-            self._play_btn.setText("▶  Play")
+            self._play_btn.setText("Play")
             self._play_btn.setEnabled(True)
-            self._pause_btn.setEnabled(False)
             self._stop_btn.setEnabled(False)
         self._rewind_btn.setEnabled(False)
         self._forward_btn.setEnabled(False)
         self._progress_slider.setEnabled(active)
-        self._update_status_dot(ps)
+        self._update_state_indicator(ps)
         self._update_status()
 
-    def _update_status_dot(self, state: PlaybackState) -> None:
+    def _update_state_indicator(self, state: PlaybackState) -> None:
         if state == PlaybackState.SYNTHESIZING:
-            self._status_dot.set_state("synthesizing", "Synthesizing…")
-            self._dot_pulse.start()
+            self._state_label.setText("Preparing audio…")
             self._progress_slider.stop_sweep()
         elif state == PlaybackState.PLAYING:
-            self._status_dot.set_state("playing", "Playing")
-            self._dot_pulse.stop()
+            self._state_label.setText("Reading")
             self._waveform.start()
             self._progress_slider.start_sweep()
         elif state == PlaybackState.PAUSED:
-            self._status_dot.set_state("paused", "Paused")
-            self._dot_pulse.stop()
+            self._state_label.setText("Paused")
             self._progress_slider.stop_sweep()
         else:
-            self._status_dot.set_state("idle", "Idle")
-            self._dot_pulse.stop()
+            self._state_label.setText("")
             self._waveform.stop()
             self._progress_slider.stop_sweep()
 
@@ -743,14 +713,13 @@ class MainWindow(QMainWindow):
     def _on_playback_error(self, error: str) -> None:
         self._status_label.setText(f"Error: {error}")
         self._error_banner.show_error(error)
-        self._status_dot.set_state("error", "Error")
-        self._dot_pulse.stop()
+        self._state_label.setText("")
 
     @Slot()
     def _on_synthesizing(self) -> None:
         self._error_banner.setVisible(False)
         self._update_status()
-        self._update_status_dot(PlaybackState.SYNTHESIZING)
+        self._update_state_indicator(PlaybackState.SYNTHESIZING)
 
     @Slot()
     def _on_playback_finished(self) -> None:
@@ -765,7 +734,7 @@ class MainWindow(QMainWindow):
         selection = QTextEdit.ExtraSelection()
         selection.cursor = cursor
         fmt = QTextCharFormat()
-        fmt.setBackground(QColor(59, 130, 246, 56))
+        fmt.setBackground(QColor(224, 164, 88, 70))
         selection.format = fmt
         self._text_edit.setExtraSelections([selection])
         # Scroll so the highlighted region is visible.

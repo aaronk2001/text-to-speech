@@ -1,7 +1,7 @@
-"""Real-time PCM waveform visualizer — NEXUS Dark gradient bars.
+"""Real-time PCM waveform visualizer.
 
 Subscribes to PlaybackController.audio_chunk for live samples; renders 48 mirrored
-bars at ~60fps with a blue→violet gradient that matches the portfolio hero.
+bars at ~60fps.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import struct
 from collections import deque
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 BARS = 48
@@ -22,7 +22,7 @@ class WaveformWidget(QWidget):
         super().__init__(parent)
         self._samples: deque[int] = deque(maxlen=BUFFER_SAMPLES)
         self._envelope: list[float] = [0.0] * BARS
-        self.setMinimumHeight(64)
+        self.setMinimumHeight(44)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self._timer = QTimer(self)
@@ -57,10 +57,6 @@ class WaveformWidget(QWidget):
         cy = h / 2
 
         if not self._samples:
-            pen = QPen(QColor("#1e293b"))
-            pen.setWidth(2)
-            p.setPen(pen)
-            p.drawLine(0, int(cy), w, int(cy))
             return
 
         samples = list(self._samples)
@@ -75,11 +71,8 @@ class WaveformWidget(QWidget):
                 self._envelope[i] = current + (target - current) * 0.18
 
         bar_w = w / BARS
-        gap = 2.0
-        grad = QLinearGradient(0, 0, 0, h)
-        grad.setColorAt(0.0, QColor("#60a5fa"))
-        grad.setColorAt(0.5, QColor("#3b82f6"))
-        grad.setColorAt(1.0, QColor("#8b5cf6"))
+        gap = 3.0
+        color = QColor("#9a9a9a")
 
         for i, env in enumerate(self._envelope):
             if env <= 0.005:
@@ -92,5 +85,5 @@ class WaveformWidget(QWidget):
                 int(y),
                 int(bar_w - gap),
                 int(bar_h),
-                grad,
+                color,
             )

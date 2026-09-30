@@ -52,13 +52,13 @@ class TransportProgressSlider(QSlider):
         w = rect.width()
         h = rect.height()
 
-        groove_h = 6
+        groove_h = 3
         groove_y = (h - groove_h) / 2
         groove_rect = QRectF(0.0, groove_y, float(w), float(groove_h))
 
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#111827"))
-        p.drawRoundedRect(groove_rect, 3, 3)
+        p.setBrush(QColor("#262626"))
+        p.drawRoundedRect(groove_rect, 1.5, 1.5)
 
         span = max(1, self.maximum() - self.minimum())
         ratio = (self.value() - self.minimum()) / span
@@ -71,27 +71,27 @@ class TransportProgressSlider(QSlider):
                 phase = self._phase
                 lo = max(0.0, phase - 0.18)
                 hi = min(1.0, phase + 0.18)
-                grad.setColorAt(0.0, QColor("#3b82f6"))
+                grad.setColorAt(0.0, QColor("#d4d4d4"))
                 if lo > 0.0:
-                    grad.setColorAt(lo, QColor("#3b82f6"))
-                grad.setColorAt(phase, QColor("#8b5cf6"))
+                    grad.setColorAt(lo, QColor("#d4d4d4"))
+                grad.setColorAt(phase, QColor("#ffffff"))
                 if hi < 1.0:
-                    grad.setColorAt(hi, QColor("#3b82f6"))
-                grad.setColorAt(1.0, QColor("#3b82f6"))
+                    grad.setColorAt(hi, QColor("#d4d4d4"))
+                grad.setColorAt(1.0, QColor("#d4d4d4"))
                 p.setBrush(grad)
             else:
-                p.setBrush(QColor("#3b82f6"))
+                p.setBrush(QColor("#d4d4d4"))
 
             p.save()
             p.setClipRect(fill_rect)
-            p.drawRoundedRect(QRectF(0.0, groove_y, float(w), float(groove_h)), 3, 3)
+            p.drawRoundedRect(QRectF(0.0, groove_y, float(w), float(groove_h)), 1.5, 1.5)
             p.restore()
 
-        if span > 0:
-            handle_size = 14.0
+        if self.maximum() > self.minimum():
+            handle_size = 11.0
             handle_x = fill_w - handle_size / 2
             handle_x = max(0.0, min(handle_x, float(w) - handle_size))
             handle_y = (h - handle_size) / 2
-            p.setBrush(QColor("#f8fafc"))
-            p.setPen(QPen(QColor("#3b82f6"), 2))
+            p.setBrush(QColor("#ededed"))
+            p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QRectF(handle_x, handle_y, handle_size, handle_size))
