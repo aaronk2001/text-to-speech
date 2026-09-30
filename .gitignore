@@ -16,3 +16,10 @@ assets/bin/
 .env
 .omc/
 .claude/
+
+# Local scratch output
+*.wav
+tmp_*.png
+launch_out.txt
+prompt.md
+hello
