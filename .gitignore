@@ -21,3 +21,5 @@ assets/bin/
 /*.wav
 /tmp_*.png
 /launch_out.txt
+/prompt.md
+/hello

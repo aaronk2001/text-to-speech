@@ -10,7 +10,16 @@ from tts_app.engines.base import SynthesisError, Voice
 from tts_app.engines.piper import PiperEngine
 
 
-def test_piper_not_available_no_binary():
+def test_piper_not_available_no_binary(tmp_path, monkeypatch):
+    # Installed voices alone aren't enough without a runtime (module or exe).
+    voices = tmp_path / "voices"
+    voices.mkdir()
+    (voices / "en_US-test-medium.onnx").touch()
+    (voices / "en_US-test-medium.onnx.json").write_text("{}")
+    monkeypatch.setattr("tts_app.engines.piper.get_voices_dir", lambda: voices)
+    monkeypatch.setattr("tts_app.engines.piper._try_import_piper", lambda: None)
+    monkeypatch.setattr("tts_app.engines.piper._piper_module_runnable", lambda: False)
+
     engine = PiperEngine(piper_exe=Path("/nonexistent/piper.exe"))
     assert not engine.is_available()
 

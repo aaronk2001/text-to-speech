@@ -1,5 +1,7 @@
 # TTS App
 
+[![CI](https://github.com/aaronk2001/text-to-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/aaronk2001/text-to-speech/actions/workflows/ci.yml)
+
 Local-first, free, MIT-licensed text-to-speech desktop app for Windows. Paste text, pick a voice, hit play. Or press `Ctrl+Alt+S` from anywhere and it reads your clipboard.
 
 Speech is synthesized on your machine; the only network traffic is downloading voice models. No telemetry. No accounts.
@@ -33,8 +35,8 @@ Requirements:
 One-shot install:
 
 ```powershell
-git clone <this-repo> C:\path\to\Text-to-speach
-cd C:\path\to\Text-to-speach
+git clone https://github.com/aaronk2001/text-to-speech.git
+cd text-to-speech
 .\install.ps1
 ```
 
@@ -64,7 +66,7 @@ To rebind or turn it off: ☰ → Preferences. Changes apply immediately.
 
 ## Adding voices
 
-In-app: click **+ Add voice** → "Download Piper" → pick → Download.
+In-app: click **Get voices** → "Download Piper" → pick → Download.
 
 By hand: drop `<voice_id>.onnx` and `<voice_id>.onnx.json` into `%LOCALAPPDATA%\TTSApp\voices\` and restart.
 
@@ -108,4 +110,4 @@ Delete the config file to reset to defaults (the first-run wizard shows again).
 
 ## License
 
-MIT (see `LICENSE`). Piper voice models carry their own per-voice licenses (mostly MIT/CC0); see <https://huggingface.co/rhasspy/piper-voices>.
+The app's own code is MIT (see `LICENSE`). It imports [`piper-tts`](https://github.com/OHF-Voice/piper1-gpl), which is GPL-3.0, so a distributed build that bundles it is subject to the GPL. Piper voice models carry their own per-voice licenses (mostly MIT/CC0); see <https://huggingface.co/rhasspy/piper-voices>.

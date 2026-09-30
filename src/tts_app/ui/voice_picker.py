@@ -4,7 +4,6 @@ from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, Signal, Slot
 from PySide6.QtGui import QKeyEvent, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
-    QLabel,
     QLineEdit,
     QListView,
     QPushButton,
@@ -28,8 +27,7 @@ class VoicePicker(QPushButton):
         self._popup: _VoicePopup | None = None
 
         self.setProperty("role", "voicePicker")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(44)
+        self.setFixedHeight(34)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.clicked.connect(self._open_popup)
 
@@ -64,10 +62,8 @@ class VoicePicker(QPushButton):
             self.setText("No voice selected")
             return
         v = self._current
-        quality = v.quality if isinstance(v.quality, int) else 3
-        dots = "●" * quality + "○" * (5 - quality)
-        lang = v.language or "—"
-        self.setText(f"{v.name}   ·   {lang}   ·   {dots}")
+        lang = f"   {v.language}" if v.language else ""
+        self.setText(f"{v.name}{lang}   ▾")
 
     def _open_popup(self) -> None:
         if not self._voices:
@@ -107,10 +103,6 @@ class _VoicePopup(QFrame):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        header = QLabel("VOICES")
-        header.setProperty("role", "sectionHeading")
-        layout.addWidget(header)
-
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by name or language…")
         self._search.textChanged.connect(self._on_filter_changed)
@@ -134,10 +126,7 @@ class _VoicePopup(QFrame):
     def _populate(self, voices: list[Voice]) -> None:
         self._model.clear()
         for v in voices:
-            quality = v.quality if isinstance(v.quality, int) else 3
-            dots = "●" * quality + "○" * (5 - quality)
-            label = f"{v.name}   ·   {v.language or '—'}   ·   {dots}"
-            item = QStandardItem(label)
+            item = QStandardItem(f"{v.name}   {v.language or ''}".rstrip())
             item.setData(v, _ROLE_VOICE)
             item.setEditable(False)
             self._model.appendRow(item)

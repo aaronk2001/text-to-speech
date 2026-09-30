@@ -7,16 +7,9 @@ import pytest
 
 from tts_app.audio.playback import PlaybackController, PlaybackState
 
-try:
-    from PySide6.QtMultimedia import QMediaDevices
-except ImportError:
-    QMediaDevices = None
-
-
-pytestmark = pytest.mark.skipif(
-    QMediaDevices is None or QMediaDevices.defaultAudioOutput().isNull(),
-    reason="audio device not available",
-)
+# A real QAudioSink crashes under the offscreen platform on machines that have a
+# sound card, and is skipped on CI runners that don't; use the fake sink everywhere.
+pytestmark = pytest.mark.usefixtures("fake_audio")
 
 
 def tiny_synthesizer() -> Iterator[bytes]:
