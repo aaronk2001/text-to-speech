@@ -59,6 +59,7 @@ class PreferencesDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
+        self.setMinimumWidth(460)
         self._settings = settings
 
         self._hotkey_enabled = QCheckBox("Read the clipboard with a global hotkey")

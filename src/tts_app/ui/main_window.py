@@ -46,20 +46,13 @@ from tts_app.ui.transport_progress import TransportProgressSlider
 from tts_app.ui.voice_browser import VoiceBrowser
 from tts_app.ui.voice_picker import VoicePicker
 from tts_app.ui.waveform import WaveformWidget
-from tts_app.ui.widgets import ErrorBanner, HamburgerButton
+from tts_app.ui.widgets import ErrorBanner, HamburgerButton, engine_label
 
 logger = logging.getLogger(__name__)
 
 
 def _qapp() -> QApplication:
     return cast(QApplication, QApplication.instance())
-
-
-ENGINE_LABELS = {"sapi": "Windows", "piper": "Piper", "supertonic": "Supertonic", "rvc": "RVC"}
-
-
-def _engine_label(name: str) -> str:
-    return ENGINE_LABELS.get(name, name.title())
 
 
 def _hairline() -> QFrame:
@@ -414,7 +407,7 @@ class MainWindow(QMainWindow):
                 w.deleteLater()
 
         for engine in self._registry.available():
-            btn = _button(_engine_label(engine.name), "enginePill")
+            btn = _button(engine_label(engine.name), "enginePill")
             btn.setCheckable(True)
             btn.clicked.connect(lambda _checked, e=engine: self._select_engine(e))
             self._engine_group.addButton(btn)
@@ -519,7 +512,7 @@ class MainWindow(QMainWindow):
 
         supports_pitch = self._current_engine.supports_pitch
         self._pitch_slider.setEnabled(supports_pitch)
-        label = _engine_label(self._current_engine.name)
+        label = engine_label(self._current_engine.name)
         self._pitch_slider.setToolTip("" if supports_pitch else f"{label} can't change pitch")
 
         voices = self._registry.voices(self._current_engine)

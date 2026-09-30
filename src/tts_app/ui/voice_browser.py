@@ -27,6 +27,7 @@ from tts_app.engines.voices import (
     get_voices_dir,
     installed_voice_files,
 )
+from tts_app.ui.widgets import engine_label
 
 logger = logging.getLogger(__name__)
 
@@ -154,18 +155,10 @@ class VoiceBrowser(QDialog):
         engine_for: dict[str, str] = {}
         for engine in self._registry.available():
             for v in self._registry.voices(engine):
-                engine_for[v.id] = engine.name.upper()
+                engine_for[v.id] = engine_label(engine.name)
         for voice in self._registry.all_voices():
             engine_name = engine_for.get(voice.id, "?")
-            quality = (
-                f"q{voice.quality}"
-                if isinstance(voice.quality, int)
-                else (voice.quality or "—")
-            )
-            label = (
-                f"{voice.name}  ·  {engine_name}  ·  "
-                f"{voice.language or '—'}  ·  {quality}"
-            )
+            label = f"{voice.name}    {engine_name}    {voice.language or ''}".rstrip()
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, voice)
             self._installed_list.addItem(item)

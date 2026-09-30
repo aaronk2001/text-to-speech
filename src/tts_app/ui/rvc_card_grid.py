@@ -202,7 +202,7 @@ class RvcCardGrid(QWidget):
         self._progress_bar.setVisible(False)
         outer.addWidget(self._progress_bar)
 
-        installed_label = QLabel("INSTALLED")
+        installed_label = QLabel("Installed")
         installed_label.setProperty("role", "sectionHeading")
         outer.addWidget(installed_label)
 
