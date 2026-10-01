@@ -797,7 +797,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "About TTS",
-            "TTS\nLocal text-to-speech. No cloud, no accounts.",
+            "TTS\nLocal text-to-speech. No cloud, no accounts.\n\nFree software under the GPL-3.0.",
         )
 
     @Slot(int)

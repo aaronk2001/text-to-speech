@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/aaronk2001/text-to-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/aaronk2001/text-to-speech/actions/workflows/ci.yml)
 
-Local-first, free, MIT-licensed text-to-speech desktop app for Windows. Paste text, pick a voice, hit play. Or press `Ctrl+Alt+S` from anywhere and it reads your clipboard.
+Local-first, free, open-source (GPL-3.0) text-to-speech desktop app for Windows. Paste text, pick a voice, hit play. Or press `Ctrl+Alt+S` from anywhere and it reads your clipboard.
 
 Speech is synthesized on your machine; the only network traffic is downloading voice models. No telemetry. No accounts.
 
@@ -110,6 +110,6 @@ Delete the config file to reset to defaults (the first-run wizard shows again).
 
 ## License
 
-The app's own code is MIT (see `LICENSE`). It imports [`piper-tts`](https://github.com/OHF-Voice/piper1-gpl), which is GPL-3.0, so a distributed build that bundles it is subject to the GPL. Piper voice models carry their own per-voice licenses (mostly MIT/CC0); see <https://huggingface.co/rhasspy/piper-voices>.
+GPL-3.0-or-later (see `LICENSE`). Copyright (c) 2026 Aaron Karsten. The app imports [`piper-tts`](https://github.com/OHF-Voice/piper1-gpl), which is GPL-3.0, so the project as a whole is GPL. Its other dependencies (PySide6/LGPL, pyttsx3/MPL-2.0, and MIT/BSD/Apache packages) are all GPL-compatible. Piper voice models carry their own per-voice licenses (mostly MIT/CC0); see <https://huggingface.co/rhasspy/piper-voices>.
 
 RVC models you import are third-party works. You are responsible for having the rights to use them, including consent for any real person's voice they imitate.
