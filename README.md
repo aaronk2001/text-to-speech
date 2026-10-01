@@ -111,3 +111,5 @@ Delete the config file to reset to defaults (the first-run wizard shows again).
 ## License
 
 The app's own code is MIT (see `LICENSE`). It imports [`piper-tts`](https://github.com/OHF-Voice/piper1-gpl), which is GPL-3.0, so a distributed build that bundles it is subject to the GPL. Piper voice models carry their own per-voice licenses (mostly MIT/CC0); see <https://huggingface.co/rhasspy/piper-voices>.
+
+RVC models you import are third-party works. You are responsible for having the rights to use them, including consent for any real person's voice they imitate.
