@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QMimeData, QPointF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QPainter,
@@ -10,10 +10,13 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QWidget,
 )
+
+from tts_app.text.tables import tsv_to_speech
 
 ENGINE_LABELS = {"sapi": "Windows", "piper": "Piper", "supertonic": "Supertonic", "rvc": "RVC"}
 
@@ -84,3 +87,13 @@ class ErrorBanner(QWidget):
     def _on_dismiss(self) -> None:
         self.setVisible(False)
         self.dismissed.emit()
+
+
+class ReadingTextEdit(QPlainTextEdit):
+    """Pasted tables (tab-separated rows) become spoken "Header: value" lines."""
+
+    def insertFromMimeData(self, source: QMimeData) -> None:
+        if source.hasText() and "\t" in source.text():
+            self.insertPlainText(tsv_to_speech(source.text()))
+        else:
+            super().insertFromMimeData(source)

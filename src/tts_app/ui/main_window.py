@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
-    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -37,7 +36,9 @@ from tts_app.clipboard import read_clipboard_text
 from tts_app.config import AppSettings, save_settings
 from tts_app.engines.base import TTSEngine, Voice
 from tts_app.engines.registry import EngineRegistry
+from tts_app.text.docx import read_docx
 from tts_app.text.segment import Segment, segment_text
+from tts_app.text.tables import tsv_to_speech
 from tts_app.ui.motion import ReducedMotion, should_animate
 from tts_app.ui.motion import policy as motion_policy
 from tts_app.ui.preferences import PreferencesDialog
@@ -46,7 +47,7 @@ from tts_app.ui.transport_progress import TransportProgressSlider
 from tts_app.ui.voice_browser import VoiceBrowser
 from tts_app.ui.voice_picker import VoicePicker
 from tts_app.ui.waveform import WaveformWidget
-from tts_app.ui.widgets import ErrorBanner, HamburgerButton, engine_label
+from tts_app.ui.widgets import ErrorBanner, HamburgerButton, ReadingTextEdit, engine_label
 
 logger = logging.getLogger(__name__)
 
@@ -212,8 +213,10 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        self._text_edit = QPlainTextEdit()
-        self._text_edit.setPlaceholderText("Paste something to read aloud, or open a text file.")
+        self._text_edit = ReadingTextEdit()
+        self._text_edit.setPlaceholderText(
+            "Paste something to read aloud, or open a text or Word file."
+        )
         self._text_edit.setFrameShape(QFrame.Shape.NoFrame)
         self._text_edit.document().setDocumentMargin(0)
         self._text_edit.setSizePolicy(
@@ -750,11 +753,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_open_file(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Text File", "", "Text Files (*.txt);;All Files (*)"
+            self, "Open File", "", "Documents (*.txt *.docx *.tsv);;All Files (*)"
         )
-        if file_path:
-            with open(file_path) as f:
-                self._text_edit.setPlainText(f.read())
+        if not file_path:
+            return
+        path = Path(file_path)
+        if path.suffix.lower() == ".docx":
+            text = read_docx(path)
+        else:
+            text = tsv_to_speech(path.read_text(encoding="utf-8", errors="replace"))
+        self._text_edit.setPlainText(text)
 
     @Slot()
     def _on_preferences(self) -> None:
