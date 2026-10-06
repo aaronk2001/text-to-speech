@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/aaronk2001/text-to-speech/actions/workflows/ci.yml/badge.svg)](https://github.com/aaronk2001/text-to-speech/actions/workflows/ci.yml)
 
-Local-first, free, open-source (GPL-3.0) text-to-speech desktop app for Windows. Paste text, pick a voice, hit play. Or press `Ctrl+Alt+S` from anywhere and it reads your clipboard.
+Local-first, free, open-source (GPL-3.0) text-to-speech desktop app for Windows. Paste text or open a `.txt`/`.docx` file, pick a voice, hit play. Or press `Ctrl+Alt+S` from anywhere and it reads your clipboard. Tables are read row by row with their column headers.
 
 Speech is synthesized on your machine; the only network traffic is downloading voice models. No telemetry. No accounts.
 
@@ -56,6 +56,20 @@ Or directly:
 .\.venv\Scripts\pythonw.exe launcher.py
 ```
 
+## Documents and tables
+
+**Open file** takes `.txt`, `.tsv` and Word `.docx`. Word documents are read in document order, paragraphs and tables alike (no Word install needed).
+
+Tables are read one row at a time, with each value paired with its column header:
+
+| Name  | Age | City  |
+|-------|-----|-------|
+| Alice | 30  | Tempe |
+
+→ *"Row 1. Name: Alice. Age: 30. City: Tempe."*
+
+The first row is treated as the header, and empty cells are skipped. A single-row or single-column table is read as a plain list. The same applies to tables you paste from Excel, Google Sheets or a web page (they arrive as tab-separated text), to clipboard text read by the hotkey, and to `.txt`/`.tsv` files. The editor shows the converted text, so you can see and edit exactly what will be read.
+
 ## Hotkey and tray
 
 Default global hotkey is `Ctrl+Alt+S`. Pressing it from any window reads your clipboard in the current voice; pressing it again on the same text stops. The clipboard text replaces what's in the editor.
@@ -86,7 +100,7 @@ Project layout:
 src/tts_app/
   engines/    # TTSEngine ABC + Supertonic, Piper, SAPI, RVC adapters
   audio/      # QAudioSink playback, WAV/MP3/OGG export
-  text/       # sentence segmentation (playback, highlighting, export)
+  text/       # sentence segmentation, table-to-speech, .docx reader
   ui/         # main window, voice browser, tray, preferences, first-run wizard
   config/     # config.json schema + store (pydantic)
   hotkey/     # global Ctrl+Alt+S
