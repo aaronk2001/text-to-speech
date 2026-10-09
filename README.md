@@ -22,6 +22,11 @@ I read a lot of articles. Existing options either phone home, cost money, sound 
 
 **RVC (experimental).** Converts Piper's speech into another voice using an RVC model. It needs `torch` and `rvc-inferpy` 0.10.2 installed by hand (see `RvcEngine.install_hint()`; on Windows that includes a fairseq build for your Python), and turns on once at least one `.pth` model is imported via ☰ → RVC voice models. Pick which Piper voice it converts from in Preferences. The first conversion downloads HuBERT and RMVPE (~300 MB).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/tts-pipeline-dark.png">
+  <img alt="Pipeline: text from the editor, a file or the clipboard hotkey is prepared, spoken by Supertonic, Piper or SAPI5, optionally converted by RVC, then played or saved." src="docs/diagrams/tts-pipeline-light.png" width="960">
+</picture>
+
 ## Install
 
 Requirements:
